@@ -9,8 +9,6 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-vision-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![OpenCV](https://img.shields.io/badge/OpenCV-face%20gate-5C3EE8?logo=opencv&logoColor=white)](https://opencv.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-UI-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![mypy](https://img.shields.io/badge/mypy-strict-2A6DB2)](https://mypy-lang.org/)
-[![ruff](https://img.shields.io/badge/ruff-clean-D7FF64?logo=ruff&logoColor=black)](https://docs.astral.sh/ruff/)
 
 > **Not a medical device.** This is an educational engineering project. It does not diagnose, it never recommends a drug or a dose, and any lab value in a critical range is routed to a clinician instead of being explained away.
 
@@ -100,7 +98,7 @@ Every threshold lives in `src/config.py`. The biomarker knowledge base is one YA
 
 ## Tech Stack
 
-**Core:** Python 3.12 · Pydantic v2 · `mypy --strict` · `ruff`
+**Core:** Python 3.12 · Pydantic v2
 
 **Orchestration:** LangGraph, with parallel ingestion branches and conditional escalation
 
@@ -126,10 +124,18 @@ cd Longevity
 **2. Install**
 
 ```bash
-make setup
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-This creates `.venv`, installs the app with the vision extra, and installs MiVOLO. MiVOLO is installed with `--no-deps` on purpose: its package metadata pulls in YOLO and video tooling this app never uses.
+That runs the whole app except the face-age model. For apparent age from a photo, also install the vision packages, which include PyTorch and are a large download:
+
+```bash
+pip install -r requirements-vision.txt
+pip install --no-deps --no-build-isolation "git+https://github.com/WildChlamydia/MiVOLO.git@37475e3f8818b5f22448003feec3e64b01bfb188"
+```
+
+MiVOLO is installed on its own line with `--no-deps` on purpose: its package metadata pulls in YOLO and video tooling this app never uses. Without the vision packages, a photo is simply reported as not scored and everything else works.
 
 Scanned lab reports additionally need Tesseract:
 
@@ -140,7 +146,11 @@ sudo apt-get install -y tesseract-ocr   # Debian or Ubuntu
 
 **3. Configure**
 
-`make setup` copies `.env.example` to `.env`. Add your key:
+```bash
+cp .env.example .env
+```
+
+Then add your key:
 
 ```ini
 ANTHROPIC_API_KEY=...            # the only key needed
@@ -152,7 +162,7 @@ TORCH_DEVICE=auto                # cuda, mps, or cpu
 **4. Run**
 
 ```bash
-make run
+streamlit run app.py
 ```
 
 Open **http://localhost:8501**. Answer the questions, add a face photo and a lab report PDF if you have them, and press **Run pipeline**. The first photo downloads the 110 MB MiVOLO weights once.
@@ -164,12 +174,6 @@ python -m src.graph --intake intake.json --image face.jpg --labs labs.pdf --out 
 ```
 
 `intake.json` holds the ten answers. The command prints the summary, any warnings, and whether the quality checks passed.
-
-**Development**
-
-```bash
-make check     # ruff lint and format check, strict mypy
-```
 
 ## Repository Structure
 
@@ -190,8 +194,9 @@ Longevity/
 │       ├── synthesis.py         #   Evidence block, report generation, grounding
 │       ├── evaluation.py        #   The run's own quality checks
 │       └── report.py            #   ReportLab PDF
-├── Makefile                     # setup, run, check
-└── pyproject.toml
+├── requirements.txt             # Core packages, pinned to the tested versions
+├── requirements-vision.txt      # Optional: PyTorch and MiVOLO for the face-age model
+└── .env.example                 # Settings template. Copy to .env and add your key.
 ```
 
 Uploaded files go to a temporary folder that is deleted after each run. `.env` is gitignored, so your key never reaches GitHub.

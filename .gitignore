@@ -1,11 +1,7 @@
 .venv/
 .env
-*.egg-info/
 __pycache__/
 *.py[cod]
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
 report.pdf
 intake.json
 .DS_Store

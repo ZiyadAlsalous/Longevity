@@ -1,0 +1,30 @@
+# Python 3.12 or newer. Versions are the ones this project was tested with.
+#
+#   pip install -r requirements.txt
+#
+# This runs everything except the face-age model: questionnaire, lab reports, the report,
+# and the PDF. For apparent age from a photo, also install requirements-vision.txt.
+
+# Pipeline
+langgraph==0.6.11
+langchain-core==0.3.86
+langchain-anthropic==0.3.22
+pydantic==2.13.5
+pydantic-settings==2.15.0
+PyYAML==6.0.3
+
+# Lab reports and the PDF
+pymupdf==1.28.2
+pytesseract==0.3.13
+pillow==11.3.0
+reportlab==4.5.1
+
+# Photo checks (face detection and quality gate)
+numpy==2.5.3
+opencv-python==4.14.0.94
+
+# Interface
+streamlit==1.63.0
+
+# Optional, only if LLM_PROVIDER=openai
+# langchain-openai

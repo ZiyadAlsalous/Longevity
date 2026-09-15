@@ -1,0 +1,18 @@
+# Optional: apparent age from a face photo (MiVOLO v2). Large download (PyTorch).
+#
+#   pip install -r requirements-vision.txt
+#   pip install --no-deps --no-build-isolation "git+https://github.com/WildChlamydia/MiVOLO.git@37475e3f8818b5f22448003feec3e64b01bfb188"
+#
+# MiVOLO goes on its own line with --no-deps: its metadata pulls in YOLO and video tooling
+# this app never uses, and pip cannot apply --no-deps to a single line in this file.
+# Without these, the app still runs and reports the photo as not scored.
+
+-r requirements.txt
+
+torch==2.14.0
+torchvision==0.29.0
+transformers==4.51.0
+accelerate==1.8.1
+scipy==1.18.1
+timm @ git+https://github.com/huggingface/pytorch-image-models@v0.8.13dev0
+setuptools<81
