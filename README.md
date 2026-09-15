@@ -1,0 +1,212 @@
+# Longevity Insights
+
+**A face photo, a blood test, and ten lifestyle questions, turned into an evidence-grounded aging report that never diagnoses, never doses, and checks its own output on every run.**
+
+[![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Claude](https://img.shields.io/badge/Claude-Sonnet%205-D97757?logo=anthropic&logoColor=white)](https://www.anthropic.com/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-parallel%20graph-1C3C3C)](https://langchain-ai.github.io/langgraph/)
+[![MiVOLO](https://img.shields.io/badge/MiVOLO-v2-FFD21E?logo=huggingface&logoColor=black)](https://huggingface.co/iitolstykh/mivolo_v2)
+[![PyTorch](https://img.shields.io/badge/PyTorch-vision-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![OpenCV](https://img.shields.io/badge/OpenCV-face%20gate-5C3EE8?logo=opencv&logoColor=white)](https://opencv.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-UI-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![mypy](https://img.shields.io/badge/mypy-strict-2A6DB2)](https://mypy-lang.org/)
+[![ruff](https://img.shields.io/badge/ruff-clean-D7FF64?logo=ruff&logoColor=black)](https://docs.astral.sh/ruff/)
+
+> **Not a medical device.** This is an educational engineering project. It does not diagnose, it never recommends a drug or a dose, and any lab value in a critical range is routed to a clinician instead of being explained away.
+
+## Overview
+
+Upload a photo of your face and a lab report PDF, and answer ten questions about sleep, activity, alcohol, stress, diet and sun. The app returns a wellness report as a PDF: how old your face looks compared with your stated age, which blood markers sit outside their range, which lifestyle patterns stand out, and what to consider doing next.
+
+The hard part is not writing the report. It is **stopping a language model from saying things the inputs do not support**. A model asked about blood work will happily name conditions, suggest supplements, or discuss a biomarker nobody measured.
+
+So the model never judges anything. It transcribes the lab report, and it writes the final prose from a block of pre-validated facts. Every rule that matters, from unit conversion to critical-value escalation, runs in plain Python. After the model writes, the pipeline checks the result against its own inputs and records whether the run passed.
+
+Everything runs on your own machine with your own API key. Nothing is stored after a run unless you download the PDF.
+
+## Features
+
+- **Apparent age from the photo alone.** The face model receives only the image. Your stated age and questionnaire answers are used afterwards, so they cannot influence the prediction.
+- **Honest uncertainty.** The age range widens with age, because the model's error does: ±5.3 years under 30, ±7.9 in the 30s, ±9.5 from 40, measured on 30,000 labelled faces. A gap inside that range is never called notable.
+- **Lab reports read, then verified in code.** PyMuPDF extracts text, Tesseract handles scanned pages, and Claude transcribes results into a typed schema. Canonical names, unit conversion and range flags are computed in Python against a curated knowledge base.
+- **Critical values escalate automatically.** A threshold crossing produces a clinician warning the model cannot drop, and the model is told not to give lifestyle advice for that value.
+- **Grounding enforced, not requested.** Any factor citing a biomarker that was never extracted is deleted after generation and recorded as removed.
+- **Every run evaluates itself.** Extracted numbers must appear in the PDF, invented biomarkers are counted, and the report is screened for doses and diagnoses. Described under Architecture.
+- **Missing input degrades, never crashes.** No photo, a blurry photo, an unreadable PDF, or a provider timeout each becomes a warning, and the rest of the report still runs.
+- **Bias checked, not assumed.** Sex is never sent to the model, and the photo quality gate measures sharpness after normalising contrast so darker skin is not rejected as blurry. Remaining gaps are listed under Roadmap.
+- **No database.** Health data lives in memory for one run. Uploads go to a temporary folder that is deleted when the run returns.
+
+## Architecture
+
+```
+Face photo (optional)        Lab report PDF (optional)        Questionnaire (required)
+        │                              │                                │
+        │                              │                                ▼
+        │                              │                         validate_intake
+        │                              │                     bounds checked, fails fast
+        ▼                              ▼                                │
+    face_age                       bloodwork                            │
+ detect, align, blur gate      PyMuPDF text, OCR fallback               │
+ MiVOLO v2 apparent age        Claude transcription                     │
+ (photo only, no answers)      units and flags in Python                │
+        │                              │                                │
+        └──────────────────────────────┼────────────────────────────────┘
+                                       ▼
+                                gather_context
+                   stated age compared with apparent age
+                   curated biomarker lookup, critical screen
+                                       │
+                          ┌────────────┴────────────┐
+                          │                         ▼
+                          │                 critical_warning
+                          │              clinician escalation text
+                          ▼                         │
+                      synthesis ◀───────────────────┘
+               Claude writes from a pipe-delimited evidence block
+               factors citing absent biomarkers are deleted
+                          │
+                          ▼
+                      evaluation
+               the run scores its own output (below)
+                          │
+                          ▼
+                       report
+               PDF: chart, table, evidence trail, citations
+```
+
+Photo and lab branches run in parallel and fan back in. Dependencies run one way:
+
+```
+config → schemas → validation → llm → nodes → graph → app
+```
+
+### Built-in evaluation
+
+There is no separate benchmark. Every call to `run_pipeline` returns `state["evaluation"]`, computed from that run's real inputs and outputs.
+
+| | Check | Catches |
+|---|---|---|
+| 1 | Values in document | A lab value the model transcribed that does not appear as a number in the PDF. A likely hallucination. |
+| 2 | Extraction coverage | How many results mapped to known biomarkers, how many lines went unparsed, and whether OCR was needed. |
+| 3 | Invented biomarkers | Factors the model wrote about biomarkers that were never supplied. |
+| 4 | Unsafe language | Dose amounts, medication changes, or stated diagnoses in the report body. |
+| 5 | Escalation | A critical lab value that did not reach the clinician warning. |
+| 6 | Disclaimer | The disclaimer missing from the report. |
+| 7 | Photo scoring | Whether the photo passed the quality gate, the detector's confidence, or why it was rejected. |
+
+`evaluation.passed` is false when any check fails, and `evaluation.failures` says why. The command line prints the result after the summary.
+
+Every threshold lives in `src/config.py`. The biomarker knowledge base is one YAML file, `src/biomarkers.yaml`, with a citation on every entry.
+
+## Tech Stack
+
+**Core:** Python 3.12 · Pydantic v2 · `mypy --strict` · `ruff`
+
+**Orchestration:** LangGraph, with parallel ingestion branches and conditional escalation
+
+**LLM:** Claude Sonnet 5 for lab transcription and report writing, OpenAI supported through the same interface
+
+**Vision:** MiVOLO v2 for apparent age, pretrained with its revision pinned · OpenCV detection, eye alignment and quality gate · PyTorch
+
+**Documents:** PyMuPDF for text · Tesseract for scanned pages · ReportLab for the PDF report
+
+**Knowledge base:** 14 curated biomarkers in YAML, exact-match lookup, no vector store
+
+**Interface:** Streamlit, one screen, plus a command line
+
+## Getting Started
+
+**1. Clone**
+
+```bash
+git clone https://github.com/ZiyadAlsalous/Longevity.git
+cd Longevity
+```
+
+**2. Install**
+
+```bash
+make setup
+```
+
+This creates `.venv`, installs the app with the vision extra, and installs MiVOLO. MiVOLO is installed with `--no-deps` on purpose: its package metadata pulls in YOLO and video tooling this app never uses.
+
+Scanned lab reports additionally need Tesseract:
+
+```bash
+brew install tesseract                  # macOS
+sudo apt-get install -y tesseract-ocr   # Debian or Ubuntu
+```
+
+**3. Configure**
+
+`make setup` copies `.env.example` to `.env`. Add your key:
+
+```ini
+ANTHROPIC_API_KEY=...            # the only key needed
+LLM_PROVIDER=anthropic
+LLM_MODEL=claude-sonnet-5
+TORCH_DEVICE=auto                # cuda, mps, or cpu
+```
+
+**4. Run**
+
+```bash
+make run
+```
+
+Open **http://localhost:8501**. Answer the questions, add a face photo and a lab report PDF if you have them, and press **Run pipeline**. The first photo downloads the 110 MB MiVOLO weights once.
+
+**Command line**
+
+```bash
+python -m src.graph --intake intake.json --image face.jpg --labs labs.pdf --out report.pdf
+```
+
+`intake.json` holds the ten answers. The command prints the summary, any warnings, and whether the quality checks passed.
+
+**Development**
+
+```bash
+make check     # ruff lint and format check, strict mypy
+```
+
+## Repository Structure
+
+```
+Longevity/
+├── app.py                       # Streamlit interface. No business logic.
+├── src/
+│   ├── config.py                # Every threshold, model identifier and setting. One place.
+│   ├── schemas.py               # Pydantic models, evaluation results, graph state
+│   ├── graph.py                 # LangGraph wiring, run_pipeline(), command line
+│   ├── validation.py            # Intake rules, units, ranges, escalation, retrieval
+│   ├── llm.py                   # Provider interface and LangChain adapter
+│   ├── image_preprocessing.py   # Face detection, alignment, quality gate
+│   ├── biomarkers.yaml          # Curated knowledge base, cited
+│   └── nodes/
+│       ├── face_age.py          #   Apparent age from the photo, compared with stated age later
+│       ├── bloodwork.py         #   PDF text, OCR fallback, transcription, extraction check
+│       ├── synthesis.py         #   Evidence block, report generation, grounding
+│       ├── evaluation.py        #   The run's own quality checks
+│       └── report.py            #   ReportLab PDF
+├── Makefile                     # setup, run, check
+└── pyproject.toml
+```
+
+Uploaded files go to a temporary folder that is deleted after each run. `.env` is gitignored, so your key never reaches GitHub.
+
+## Roadmap
+
+- [ ] A modern face detector. The Haar cascade rejects photos of Black faces roughly twice as often as others.
+- [ ] Reduce age error for people over 60 without making younger ages worse. Fine-tuning the last layers fixed older ages but cost accuracy in the 30s and 40s.
+- [ ] Sex- and age-specific reference ranges, so thyroid and iron markers are judged against the right population
+- [ ] Show the quality checks inside the PDF, not only in the returned data
+- [ ] A layout-aware parser for multi-column lab reports
+
+## Contact
+
+Built by **Ziyad Alsalous**
+
+[![Email](https://img.shields.io/badge/Email-ziyadalsalous%40outlook.com-EA4335?logo=maildotru&logoColor=white)](mailto:ziyadalsalous@outlook.com)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Ziyad%20Alsalous-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/ziyad-alsalous-5a63b12b2/)

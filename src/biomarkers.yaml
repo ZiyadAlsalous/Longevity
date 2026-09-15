@@ -1,0 +1,247 @@
+- canonical_name: hs_crp
+  display_name: hs-CRP
+  synonyms: [hs-crp, hscrp, high sensitivity crp, c-reactive protein, crp, cardio crp]
+  canonical_unit: mg/L
+  unit_conversions:
+    mg/dl: 10.0
+    nmol/l: 0.105
+  optimal_low: null
+  optimal_high: 1.0
+  critical_low: null
+  critical_high: 10.0
+  aging_relevance: >-
+    High-sensitivity CRP tracks low-grade systemic inflammation, one of the most
+    consistently reported correlates of accelerated biological aging and of
+    cardiovascular risk in otherwise healthy adults. Values above roughly 3 mg/L are
+    commonly described as a higher-inflammation pattern; values above 10 mg/L usually
+    reflect an acute process rather than a chronic one and need clinical interpretation.
+  citation: >-
+    Ridker PM. "A Test in Context: High-Sensitivity C-Reactive Protein."
+    J Am Coll Cardiol, 2016.
+
+- canonical_name: hba1c
+  display_name: HbA1c
+  synonyms: [hba1c, a1c, hemoglobin a1c, glycated hemoglobin, haemoglobin a1c]
+  canonical_unit: "%"
+  unit_conversions:
+    mmol/mol: 0.0915
+  optimal_low: 4.5
+  optimal_high: 5.4
+  critical_low: null
+  critical_high: 9.0
+  aging_relevance: >-
+    HbA1c reflects average blood glucose over roughly three months. Sustained higher
+    glycation is associated with vascular ageing, tissue stiffening through advanced
+    glycation end-products, and elevated all-cause risk even below diagnostic cut-offs.
+  citation: >-
+    American Diabetes Association. "Standards of Care in Diabetes." Diabetes Care, 2024.
+
+- canonical_name: fasting_glucose
+  display_name: Fasting glucose
+  synonyms: [glucose, fasting glucose, fasting blood glucose, fbg, glucose fasting, fpg]
+  canonical_unit: mg/dL
+  unit_conversions:
+    mmol/l: 18.0182
+  optimal_low: 70.0
+  optimal_high: 99.0
+  critical_low: 54.0
+  critical_high: 250.0
+  aging_relevance: >-
+    Fasting glucose is the most widely available marker of glucose regulation. Values
+    drifting upward within the normal range over years often precede insulin resistance,
+    which is itself linked to faster functional decline.
+  citation: >-
+    American Diabetes Association. "Standards of Care in Diabetes." Diabetes Care, 2024.
+
+- canonical_name: total_cholesterol
+  display_name: Total cholesterol
+  synonyms: [total cholesterol, cholesterol total, cholesterol, chol]
+  canonical_unit: mg/dL
+  unit_conversions:
+    mmol/l: 38.67
+  optimal_low: 125.0
+  optimal_high: 200.0
+  critical_low: null
+  critical_high: 330.0
+  aging_relevance: >-
+    Total cholesterol is a coarse summary of circulating lipids and is most informative
+    alongside LDL, HDL, and triglycerides rather than on its own.
+  citation: >-
+    Grundy SM et al. "AHA/ACC Guideline on the Management of Blood Cholesterol."
+    Circulation, 2019.
+
+- canonical_name: ldl_cholesterol
+  display_name: LDL cholesterol
+  synonyms: [ldl, ldl cholesterol, ldl-c, ldl calc, ldl cholesterol calc]
+  canonical_unit: mg/dL
+  unit_conversions:
+    mmol/l: 38.67
+  optimal_low: null
+  optimal_high: 100.0
+  critical_low: null
+  critical_high: 190.0
+  aging_relevance: >-
+    Cumulative LDL exposure over a lifetime is causally associated with atherosclerotic
+    disease, so the same value carries more weight the earlier in life it appears.
+  citation: >-
+    Ference BA et al. "Low-density lipoproteins cause atherosclerotic cardiovascular
+    disease." European Heart Journal, 2017.
+
+- canonical_name: hdl_cholesterol
+  display_name: HDL cholesterol
+  synonyms: [hdl, hdl cholesterol, hdl-c]
+  canonical_unit: mg/dL
+  unit_conversions:
+    mmol/l: 38.67
+  optimal_low: 50.0
+  optimal_high: null
+  critical_low: 20.0
+  critical_high: null
+  aging_relevance: >-
+    Low HDL cholesterol frequently travels with insulin resistance, low physical
+    activity, and central adiposity, and is treated here as a lifestyle-linked pattern
+    rather than an independent target to raise.
+  citation: >-
+    Grundy SM et al. "AHA/ACC Guideline on the Management of Blood Cholesterol."
+    Circulation, 2019.
+
+- canonical_name: triglycerides
+  display_name: Triglycerides
+  synonyms: [triglycerides, trig, tg, triglyceride]
+  canonical_unit: mg/dL
+  unit_conversions:
+    mmol/l: 88.57
+  optimal_low: null
+  optimal_high: 150.0
+  critical_low: null
+  critical_high: 500.0
+  aging_relevance: >-
+    Fasting triglycerides respond quickly to refined carbohydrate intake, alcohol, and
+    activity level, which makes them one of the most lifestyle-responsive markers on a
+    standard panel.
+  citation: >-
+    Grundy SM et al. "AHA/ACC Guideline on the Management of Blood Cholesterol."
+    Circulation, 2019.
+
+- canonical_name: vitamin_d
+  display_name: Vitamin D (25-OH)
+  synonyms: [vitamin d, 25-oh vitamin d, 25 hydroxyvitamin d, vit d, vitamin d 25-hydroxy]
+  canonical_unit: ng/mL
+  unit_conversions:
+    nmol/l: 0.4006
+  optimal_low: 30.0
+  optimal_high: 60.0
+  critical_low: 10.0
+  critical_high: 100.0
+  aging_relevance: >-
+    Low 25-hydroxyvitamin D is common at higher latitudes and with minimal sun exposure,
+    and associates with reduced muscle function and bone density in older adults. The
+    association with lifespan is observational and much debated.
+  citation: >-
+    Institute of Medicine. "Dietary Reference Intakes for Calcium and Vitamin D." 2011.
+
+- canonical_name: vitamin_b12
+  display_name: Vitamin B12
+  synonyms: [vitamin b12, b12, cobalamin, vit b12]
+  canonical_unit: pg/mL
+  unit_conversions:
+    pmol/l: 1.355
+  optimal_low: 400.0
+  optimal_high: 900.0
+  critical_low: 150.0
+  critical_high: null
+  aging_relevance: >-
+    B12 absorption declines with age and with long-term acid suppression or metformin
+    use. Low levels can present as fatigue or cognitive complaints that are easy to
+    attribute to ageing itself.
+  citation: >-
+    Green R et al. "Vitamin B12 deficiency." Nature Reviews Disease Primers, 2017.
+
+- canonical_name: ferritin
+  display_name: Ferritin
+  synonyms: [ferritin, serum ferritin]
+  canonical_unit: ng/mL
+  unit_conversions:
+    ug/l: 1.0
+    mcg/l: 1.0
+  optimal_low: 30.0
+  optimal_high: 200.0
+  critical_low: 10.0
+  critical_high: 1000.0
+  aging_relevance: >-
+    Ferritin reflects iron stores but also rises with inflammation, so it is read here
+    alongside hs-CRP rather than alone. Both iron depletion and iron overload are linked
+    to oxidative stress.
+  citation: >-
+    Camaschella C. "Iron deficiency." Blood, 2019.
+
+- canonical_name: alt
+  display_name: ALT
+  synonyms: [alt, alanine aminotransferase, sgpt, alt (sgpt)]
+  canonical_unit: U/L
+  unit_conversions:
+    iu/l: 1.0
+  optimal_low: null
+  optimal_high: 33.0
+  critical_low: null
+  critical_high: 200.0
+  aging_relevance: >-
+    Mildly elevated ALT in the absence of alcohol excess is most often associated with
+    hepatic fat accumulation, which tracks closely with insulin resistance.
+  citation: >-
+    Kwo PY et al. "ACG Clinical Guideline: Evaluation of Abnormal Liver Chemistries."
+    Am J Gastroenterol, 2017.
+
+- canonical_name: ast
+  display_name: AST
+  synonyms: [ast, aspartate aminotransferase, sgot, ast (sgot)]
+  canonical_unit: U/L
+  unit_conversions:
+    iu/l: 1.0
+  optimal_low: null
+  optimal_high: 33.0
+  critical_low: null
+  critical_high: 200.0
+  aging_relevance: >-
+    AST is less liver-specific than ALT and also rises after intense exercise or muscle
+    injury, so an isolated elevation is weak evidence on its own.
+  citation: >-
+    Kwo PY et al. "ACG Clinical Guideline: Evaluation of Abnormal Liver Chemistries."
+    Am J Gastroenterol, 2017.
+
+- canonical_name: tsh
+  display_name: TSH
+  synonyms: [tsh, thyroid stimulating hormone, thyrotropin]
+  canonical_unit: mIU/L
+  unit_conversions:
+    uiu/ml: 1.0
+    miu/ml: 1000.0
+  optimal_low: 0.5
+  optimal_high: 4.0
+  critical_low: 0.1
+  critical_high: 10.0
+  aging_relevance: >-
+    Thyroid function shapes resting metabolic rate, lipids, and energy. Reference ranges
+    shift upward with age, so a value read as high in a 30-year-old may be unremarkable
+    at 75.
+  citation: >-
+    Biondi B, Cooper DS. "Subclinical Hypothyroidism: A Review." JAMA, 2019.
+
+- canonical_name: homocysteine
+  display_name: Homocysteine
+  synonyms: [homocysteine, hcy, total homocysteine]
+  canonical_unit: umol/L
+  unit_conversions:
+    mg/l: 7.397
+  optimal_low: null
+  optimal_high: 10.0
+  critical_low: null
+  critical_high: 30.0
+  aging_relevance: >-
+    Elevated homocysteine is associated with vascular and cognitive ageing and is
+    partly a downstream marker of B12, B6, and folate status. Lowering it with vitamins
+    has not reliably improved outcomes in trials, so it is treated as a signal to
+    investigate, not a target to chase.
+  citation: >-
+    Smith AD, Refsum H. "Homocysteine, B Vitamins, and Cognitive Impairment."
+    Annual Review of Nutrition, 2016.
