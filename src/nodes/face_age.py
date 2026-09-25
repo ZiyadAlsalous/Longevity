@@ -31,8 +31,7 @@ def face_age_node(state: PipelineState) -> dict[str, Any]:
 
 
 def estimate_apparent_age(image_path: str) -> dict[str, Any]:
-    # Takes only the photo path, so the estimate cannot be influenced by any intake answer.
-    # The stated age is compared against it later, in compare_with_stated_age.
+    """Predict apparent age from the photo alone."""
     try:
         crop, confidence = prepare_face(image_path)
     except ImageQualityError as exc:
@@ -44,8 +43,7 @@ def estimate_apparent_age(image_path: str) -> dict[str, Any]:
     try:
         (apparent_age,) = predict_apparent_ages([crop])
     except Exception as exc:  # noqa: BLE001
-        # The vision extra is optional and runs remote model code, so import, download,
-        # and torch device errors all mean "no vision signal", never a failed run.
+        # Any model failure skips the photo instead of failing the run.
         return {
             "vision_check": VisionCheck(
                 scored=False, reason_not_scored=f"Vision model unavailable: {exc}"
@@ -64,6 +62,7 @@ def estimate_apparent_age(image_path: str) -> dict[str, Any]:
 
 
 def range_half_width(apparent_age: float) -> float:
+    """Error range for a predicted age."""
     for upper, half_width in APPARENT_AGE_RANGE_BY_PREDICTION:
         if apparent_age < upper:
             return half_width
@@ -73,6 +72,7 @@ def range_half_width(apparent_age: float) -> float:
 def compare_with_stated_age(
     estimate: ApparentAgeEstimate, questionnaire: Questionnaire
 ) -> tuple[FaceAgeSignal, list[str]]:
+    """Compare apparent age with stated age."""
     signal = FaceAgeSignal(
         apparent_age=estimate.apparent_age,
         chronological_age=questionnaire.chronological_age,
@@ -91,6 +91,7 @@ def compare_with_stated_age(
 
 
 def predict_apparent_ages(crops: list[np.ndarray]) -> list[float]:
+    """Run MiVOLO on face crops."""
     import torch
 
     model, processor = _load_age_model()

@@ -96,7 +96,7 @@ class RangeFlag(str, Enum):
 
 
 class BloodAnalyte(StrictModel):
-    # canonical_name and flag are assigned in Python and hidden from the model's schema.
+    # Set in Python, hidden from the model.
     canonical_name: SkipJsonSchema[str] = UNMAPPED
     reported_name: str = Field(description="Analyte name exactly as printed.")
     value: float = Field(description="Numeric result, as printed.")

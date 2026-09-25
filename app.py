@@ -29,6 +29,7 @@ RESULT_KEY = "pipeline_state"
 
 
 def collect_questionnaire() -> dict[str, Any]:
+    """Render the intake form and return the answers."""
     left, right = st.columns(2)
     with left:
         age = st.number_input(
@@ -71,6 +72,7 @@ def collect_questionnaire() -> dict[str, Any]:
 
 
 def render_report(state: PipelineState) -> None:
+    """Show the finished report on the page."""
     report = state["report"]
 
     if report.escalation:
@@ -114,6 +116,7 @@ def render_report(state: PipelineState) -> None:
 
 
 def main() -> None:
+    """Run the Streamlit app."""
     st.title("Longevity Insights")
     st.caption(
         "Local demo of an evidence-grounded, non-diagnostic aging-signal pipeline. "

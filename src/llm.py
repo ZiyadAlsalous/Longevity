@@ -16,11 +16,7 @@ class StructuredLLM(Protocol):
 
 
 class OllamaLLM:
-    """A local model served by Ollama. Nothing leaves the machine.
-
-    Ollama constrains decoding to the schema, so the reply is always well-formed JSON;
-    Pydantic still validates it, because a well-formed reply can break a field constraint.
-    """
+    """Local model served by Ollama."""
 
     def __init__(self, model: str) -> None:
         import ollama
@@ -31,6 +27,7 @@ class OllamaLLM:
         )
 
     def generate[T: BaseModel](self, *, system: str, user: str, schema: type[T]) -> T:
+        """Ask the model for output that matches the schema."""
         import ollama
 
         try:
@@ -55,12 +52,7 @@ class OllamaLLM:
 
 
 def _require_every_field(node: Any) -> Any:
-    """Mark every property required, so constrained decoding cannot skip a field.
-
-    A field with a default is optional in Pydantic's schema, and small local models omit
-    optional fields: they returned a lab panel with no analytes at all. Nullable fields
-    are still allowed to be null.
-    """
+    """Mark every schema field required so the model cannot skip one."""
     if isinstance(node, dict):
         if "properties" in node:
             node["required"] = list(node["properties"])

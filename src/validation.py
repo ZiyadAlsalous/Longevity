@@ -35,6 +35,7 @@ class QuestionnaireError(ValueError):
 
 
 def validate_questionnaire(raw: object) -> Questionnaire:
+    """Validate the intake answers."""
     if not isinstance(raw, Mapping):
         raise QuestionnaireError(
             f"Invalid intake answers: expected an object of answers, got {type(raw).__name__}."
@@ -50,6 +51,7 @@ def validate_questionnaire(raw: object) -> Questionnaire:
 
 
 def summarize_lifestyle_flags(questionnaire: Questionnaire) -> list[tuple[str, str]]:
+    """Flag lifestyle answers outside healthy ranges."""
     flags: list[tuple[str, str]] = []
     if questionnaire.sleep_hours < LOW_SLEEP_HOURS:
         flags.append(("sleep_hours", f"Short sleep: {questionnaire.sleep_hours} hours per night."))
@@ -128,6 +130,7 @@ def _normalize_unit_label(unit: str) -> str:
 
 
 def normalize_blood_panel(panel: BloodPanel) -> BloodPanel:
+    """Map names, convert units and flag each lab value."""
     references = load_biomarker_reference()
     normalized: list[BloodAnalyte] = []
     unparsed = list(panel.unparsed_fields)
@@ -223,6 +226,7 @@ def deviation_percent(analyte: BloodAnalyte) -> float:
 
 
 def find_critical_findings(panel: BloodPanel) -> list[CriticalFinding]:
+    """Find lab values past a critical threshold."""
     references = load_biomarker_reference()
     findings: list[CriticalFinding] = []
 
@@ -259,6 +263,7 @@ def _critical_finding(
 def select_biomarker_context(
     panel: BloodPanel | None, questionnaire: Questionnaire
 ) -> list[BiomarkerReference]:
+    """Pick the knowledge base entries relevant to this run."""
     references = load_biomarker_reference()
     selected = {a.canonical_name for a in panel.analytes} if panel else set()
     if questionnaire.sun_exposure is SunExposure.MINIMAL:

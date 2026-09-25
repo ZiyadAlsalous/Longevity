@@ -45,6 +45,7 @@ class PdfText(NamedTuple):
 
 
 def extract_pdf_text(path: Path) -> PdfText:
+    """Extract text from the lab PDF, using OCR for scanned pages."""
     if not path.exists():
         raise FileNotFoundError(f"No lab report at {path}.")
 
@@ -91,6 +92,7 @@ def _ocr_page(page: Any) -> str:
 
 
 def transcribe_blood_panel(document_text: str) -> BloodPanel:
+    """Have the model transcribe lab results into the schema."""
     llm = build_llm()
     prompt = f"Transcribe every laboratory result in this report.\n\n{document_text}"
     system = EXTRACTION_SYSTEM
@@ -109,9 +111,10 @@ def transcribe_blood_panel(document_text: str) -> BloodPanel:
 
 
 def values_not_in_document(panel: BloodPanel, document_text: str) -> list[str]:
+    """List transcribed values that are not printed in the PDF."""
     printed_numbers: set[float] = set()
     for number in re.findall(r"\d+(?:[.,]\d+)*", document_text):
-        # "1,000" is a thousands separator on some reports and "5,4" a decimal on others.
+        # Accept both "1,000" and "5,4" number styles.
         printed_numbers.add(float(number.replace(",", "")))
         if number.count(",") == 1 and "." not in number:
             printed_numbers.add(float(number.replace(",", ".")))
@@ -123,6 +126,7 @@ def values_not_in_document(panel: BloodPanel, document_text: str) -> list[str]:
 
 
 def bloodwork_node(state: PipelineState) -> dict[str, Any]:
+    """Read, transcribe and normalise the lab report."""
     pdf_path = state.get("lab_pdf_path")
     if not pdf_path:
         return {}
@@ -149,8 +153,7 @@ def bloodwork_node(state: PipelineState) -> dict[str, Any]:
     except ValidationError as exc:
         return {"warnings": [f"Lab extraction failed validation: {exc.error_count()} field(s)."]}
     except Exception as exc:  # noqa: BLE001
-        # Provider SDKs raise their own timeout, auth, and rate-limit types. Any of them
-        # should skip the lab branch, not abort a run that can still report on the intake.
+        # Any model failure skips the lab branch instead of failing the run.
         return {"warnings": [f"Lab extraction failed: {type(exc).__name__}: {exc}"]}
 
     panel = normalize_blood_panel(transcribed)

@@ -37,16 +37,13 @@ HAAR_SCALE_FACTOR: float = 1.05
 HAAR_MIN_NEIGHBORS: int = 4
 HAAR_EYE_MIN_NEIGHBORS: int = 4
 DETECTION_PAD_FRACTION: float = 0.2
-# Sharpness is measured after scaling each crop to the same contrast. A raw Laplacian
-# threshold marked sharp photos of darker skin as blurry far more often than lighter skin.
+# Blur threshold, measured after contrast is equalised so darker skin is not penalised.
 CONTRAST_NORMALIZED_STD: float = 50.0
 MIN_NORMALIZED_SHARPNESS: float = 9.6
 
 MIN_PREDICTED_AGE: float = 1.0
 MAX_PREDICTED_AGE: float = 100.0
-# Half-width of the range that held 80% of true ages, by predicted age, measured on
-# 30,000 labelled UTKFace and AgeDB faces. Error grows with age, so one width would
-# overstate confidence for older faces. A gap smaller than this is not called notable.
+# 80% error range by predicted age, measured on 30,000 UTKFace and AgeDB faces.
 APPARENT_AGE_RANGE_BY_PREDICTION: tuple[tuple[float, float], ...] = (
     (30.0, 5.3),
     (40.0, 7.9),
@@ -61,9 +58,7 @@ EXTRACTION_RETRIES: int = 1
 MAX_FACTORS: int = 5
 MAX_RECOMMENDATIONS: int = 5
 
-# Output-safety screen, matched case-insensitively against the generated report body.
-# The dose pattern skips lab units such as "mg/dL"; the negative lookbehinds let a report
-# say "do not start taking" or "not saying you have" without being flagged.
+# Dose, medication-change and diagnosis patterns that fail a report.
 UNSAFE_OUTPUT_PATTERNS: tuple[str, ...] = (
     r"\b\d+(?:\.\d+)?\s*(?:mg|mcg|µg|ug|iu|milligrams?|micrograms?)\b(?!\s*/)",
     r"(?<!not )(?<!never )(?<!n't )\b(?:start|stop|increase|decrease|double|halve)\s+"

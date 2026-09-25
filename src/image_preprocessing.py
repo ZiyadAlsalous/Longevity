@@ -34,6 +34,7 @@ class FaceBox(NamedTuple):
 
 
 def prepare_face(path: str | Path) -> tuple[np.ndarray, float]:
+    """Detect, align, crop and quality-check the face in a photo."""
     padded = pad_for_detection(load_image(path))
     box = detect_face(padded)
     crop = align_and_crop(padded, box)
@@ -54,6 +55,7 @@ def pad_for_detection(image: np.ndarray) -> np.ndarray:
 
 
 def detect_face(image: np.ndarray) -> FaceBox:
+    """Find exactly one face with the Haar cascade."""
     cascade = _cascade("haarcascade_frontalface_default.xml")
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     detections, _, weights = cascade.detectMultiScale3(
@@ -76,6 +78,7 @@ def detect_face(image: np.ndarray) -> FaceBox:
 
 
 def align_and_crop(image: np.ndarray, box: FaceBox) -> np.ndarray:
+    """Level the eyes and crop the face to the model's input size."""
     angle = _eye_angle(image, box)
     if angle is not None:
         center = (box.x + box.width / 2.0, box.y + box.height / 2.0)
@@ -96,6 +99,7 @@ def align_and_crop(image: np.ndarray, box: FaceBox) -> np.ndarray:
 
 
 def assess_quality(crop: np.ndarray) -> None:
+    """Reject blurry, dark or overexposed crops."""
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
     sharpness = normalized_sharpness(gray)
     if sharpness < MIN_NORMALIZED_SHARPNESS:
@@ -109,6 +113,7 @@ def assess_quality(crop: np.ndarray) -> None:
 
 
 def normalized_sharpness(gray: np.ndarray) -> float:
+    """Measure blur after equalising contrast."""
     pixels = gray.astype(np.float64)
     spread = pixels.std()
     if spread == 0:

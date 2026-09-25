@@ -46,6 +46,7 @@ and {MAX_RECOMMENDATIONS} recommendations, ordered by how well the evidence supp
 
 
 def synthesis_node(state: PipelineState) -> dict[str, Any]:
+    """Write the report from the evidence, then enforce grounding."""
     panel = state.get("blood_panel")
     prompt = build_evidence_prompt(
         questionnaire=state["questionnaire"],
@@ -78,6 +79,7 @@ def build_evidence_prompt(
     critical_findings: list[CriticalFinding],
     warnings: list[str],
 ) -> str:
+    """Turn validated inputs into the evidence block."""
     lines: list[str] = [
         "EVIDENCE",
         f"PROFILE | chronological_age | {questionnaire.chronological_age} years",
@@ -133,6 +135,7 @@ def build_evidence_prompt(
 
 
 def invented_biomarkers(factor: ContributingFactor, panel: BloodPanel | None) -> list[str]:
+    """Biomarkers a factor cites that were never supplied."""
     available = {analyte.canonical_name for analyte in _mapped_analytes(panel)}
     return sorted(
         {
@@ -146,7 +149,7 @@ def invented_biomarkers(factor: ContributingFactor, panel: BloodPanel | None) ->
 def enforce_grounding(
     report: AgingReport, panel: BloodPanel | None
 ) -> tuple[AgingReport, list[str]]:
-    """Drop factors citing biomarkers that were never supplied; return the dropped titles."""
+    """Drop ungrounded factors and their recommendations."""
     kept: list[ContributingFactor] = []
     dropped: list[str] = []
     notes: list[str] = []
@@ -162,8 +165,7 @@ def enforce_grounding(
             kept.append(factor)
 
     kept = kept[:MAX_FACTORS]
-    # A recommendation may name its factor by title or by one of that factor's evidence
-    # identifiers; small local models tend to use the identifier.
+    # A recommendation may link to a factor by title or by one of its evidence ids.
     links = {factor.title for factor in kept}
     links |= {evidence.identifier for factor in kept for evidence in factor.evidence}
     recommendations = [rec for rec in report.recommendations if rec.linked_factor in links]

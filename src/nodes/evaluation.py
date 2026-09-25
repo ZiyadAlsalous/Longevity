@@ -8,6 +8,7 @@ from src.schemas import AgingReport, PipelineState, RunEvaluation, SafetyCheck
 
 
 def evaluation_node(state: PipelineState) -> dict[str, Any]:
+    """Score this run's output and record any failures."""
     safety = SafetyCheck(unsafe_phrases=find_unsafe_phrases(state["report"]))
     extraction = state.get("extraction_check")
     vision = state.get("vision_check")
@@ -38,6 +39,7 @@ def evaluation_node(state: PipelineState) -> dict[str, Any]:
 
 
 def find_unsafe_phrases(report: AgingReport) -> list[str]:
+    """Find dose, medication or diagnosis language in the report."""
     body = "\n".join(
         [
             report.summary,

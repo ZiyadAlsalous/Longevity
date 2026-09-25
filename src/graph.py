@@ -34,10 +34,12 @@ REPORT: Final = "report"
 
 
 def validate_intake_node(state: PipelineState) -> dict[str, Any]:
+    """Validate the questionnaire; the only node that can stop a run."""
     return {"questionnaire": validate_questionnaire(state.get("raw_questionnaire", {}))}
 
 
 def gather_context_node(state: PipelineState) -> dict[str, Any]:
+    """Merge both branches: age gap, knowledge lookup, critical screen."""
     panel = state.get("blood_panel")
     questionnaire = state["questionnaire"]
     warnings: list[str] = []
@@ -61,10 +63,12 @@ def gather_context_node(state: PipelineState) -> dict[str, Any]:
 
 
 def critical_warning_node(state: PipelineState) -> dict[str, Any]:
+    """Build the clinician warning from the critical findings."""
     return {"escalation": " ".join(f.message for f in state.get("critical_findings", []))}
 
 
 def route_ingestion(state: PipelineState) -> list[str]:
+    """Run the photo and lab branches that have an input."""
     branches: list[str] = []
     if state.get("image_path"):
         branches.append(FACE_AGE)
@@ -74,10 +78,12 @@ def route_ingestion(state: PipelineState) -> list[str]:
 
 
 def route_after_context(state: PipelineState) -> Literal["critical_warning", "synthesis"]:
+    """Escalate first if any lab value is critical."""
     return CRITICAL_WARNING if state.get("critical_findings") else SYNTHESIS
 
 
 def build_graph() -> Any:
+    """Wire the nodes into the LangGraph pipeline."""
     graph = StateGraph(PipelineState)
 
     graph.add_node(VALIDATE_INTAKE, validate_intake_node)
@@ -110,6 +116,7 @@ def run_pipeline(
     lab_pdf_path: str | Path | None = None,
     report_path: str | Path | None = None,
 ) -> PipelineState:
+    """Run the whole pipeline once and return the final state."""
     initial: PipelineState = {
         "raw_questionnaire": questionnaire,
         "image_path": str(image_path) if image_path else None,
@@ -121,6 +128,7 @@ def run_pipeline(
 
 
 def main() -> None:
+    """Command line entry point."""
     parser = argparse.ArgumentParser(description="Run the Longevity Insights pipeline.")
     parser.add_argument("--intake", required=True, type=Path, help="JSON file of intake answers.")
     parser.add_argument("--image", type=Path, default=None, help="Optional face photo.")

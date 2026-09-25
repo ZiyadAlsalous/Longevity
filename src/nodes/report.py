@@ -38,6 +38,7 @@ MAX_CHART_BARS = 6
 
 
 def report_node(state: PipelineState) -> dict[str, Any]:
+    """Write the report PDF to disk."""
     output_path = state.get("report_pdf_path")
     if not output_path:
         return {"report_pdf_path": None}
@@ -49,6 +50,7 @@ def report_node(state: PipelineState) -> dict[str, Any]:
 
 
 def render_report_pdf(state: PipelineState) -> bytes:
+    """Build the report PDF in memory."""
     buffer = io.BytesIO()
     document = SimpleDocTemplate(
         buffer,
