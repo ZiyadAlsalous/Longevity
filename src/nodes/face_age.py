@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from functools import lru_cache
 from typing import Any
 
@@ -103,16 +104,26 @@ def predict_apparent_ages(crops: list[np.ndarray]) -> list[float]:
     return [float(np.clip(age, MIN_PREDICTED_AGE, MAX_PREDICTED_AGE)) for age in ages]
 
 
+_MODEL_LOCK = threading.Lock()
+
+
 @lru_cache(maxsize=1)
 def _load_age_model() -> tuple[Any, Any]:
+    with _MODEL_LOCK:
+        return _load_age_model_once()
+
+
+def _load_age_model_once() -> tuple[Any, Any]:
     import torch
     from transformers import AutoImageProcessor, AutoModelForImageClassification
 
+    # Real weights from the start: the "meta" fast path broke when loads overlapped.
     model = AutoModelForImageClassification.from_pretrained(
         AGE_MODEL_ID,
         revision=AGE_MODEL_REVISION,
         trust_remote_code=True,
         torch_dtype=torch.float32,
+        low_cpu_mem_usage=False,
     )
     processor = AutoImageProcessor.from_pretrained(
         AGE_MODEL_ID, revision=AGE_MODEL_REVISION, trust_remote_code=True

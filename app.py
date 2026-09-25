@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,12 @@ from src.validation import QuestionnaireError
 st.set_page_config(page_title="Longevity Insights", page_icon="🧬", layout="centered")
 
 RESULT_KEY = "pipeline_state"
+
+
+@st.cache_resource
+def _run_lock() -> threading.Lock:
+    """One pipeline run at a time, across every tab and rerun."""
+    return threading.Lock()
 
 
 def collect_questionnaire() -> dict[str, Any]:
@@ -130,23 +137,33 @@ def main() -> None:
     labs = st.file_uploader("Lab report PDF (optional)", type=["pdf"])
 
     if st.button("Run pipeline", type="primary"):
-        with tempfile.TemporaryDirectory() as workspace:
-            paths = {
-                "image_path": _save_upload(photo, Path(workspace)),
-                "lab_pdf_path": _save_upload(labs, Path(workspace)),
-            }
-            with st.spinner("Running the pipeline..."):
-                try:
-                    st.session_state[RESULT_KEY] = run_pipeline(
-                        questionnaire=questionnaire, **paths
-                    )
-                except (QuestionnaireError, LLMConfigError) as exc:
-                    st.session_state.pop(RESULT_KEY, None)
-                    st.error(str(exc))
-                    return
+        lock = _run_lock()
+        if not lock.acquire(blocking=False):
+            st.warning(
+                "A report is already being generated. Wait for it to finish, then run again."
+            )
+            return
+        try:
+            _run(questionnaire, photo, labs)
+        finally:
+            lock.release()
 
     if RESULT_KEY in st.session_state:
         render_report(st.session_state[RESULT_KEY])
+
+
+def _run(questionnaire: dict[str, Any], photo: Any, labs: Any) -> None:
+    with tempfile.TemporaryDirectory() as workspace:
+        paths = {
+            "image_path": _save_upload(photo, Path(workspace)),
+            "lab_pdf_path": _save_upload(labs, Path(workspace)),
+        }
+        with st.spinner("Running the pipeline..."):
+            try:
+                st.session_state[RESULT_KEY] = run_pipeline(questionnaire=questionnaire, **paths)
+            except (QuestionnaireError, LLMConfigError) as exc:
+                st.session_state.pop(RESULT_KEY, None)
+                st.error(str(exc))
 
 
 def _split_comma_list(text: str) -> list[str]:
