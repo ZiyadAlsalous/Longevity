@@ -12,6 +12,7 @@ from src.config import (
     MAX_CHRONOLOGICAL_AGE,
     MAX_EXERCISE_MINUTES_PER_WEEK,
     MAX_SLEEP_HOURS,
+    MIN_SLEEP_HOURS,
     MIN_CHRONOLOGICAL_AGE,
     STRESS_SCALE_MAX,
     STRESS_SCALE_MIN,
@@ -35,7 +36,9 @@ def collect_questionnaire() -> dict[str, Any]:
         age = st.number_input(
             "Age", min_value=MIN_CHRONOLOGICAL_AGE, max_value=MAX_CHRONOLOGICAL_AGE, value=45
         )
-        sleep = st.slider("Average sleep (hours per night)", 0.0, MAX_SLEEP_HOURS, 7.0, 0.5)
+        sleep = st.slider(
+            "Average sleep (hours per night)", MIN_SLEEP_HOURS, MAX_SLEEP_HOURS, 7.0, 0.5
+        )
         exercise = st.slider(
             "Exercise (minutes per week)", 0, MAX_EXERCISE_MINUTES_PER_WEEK, 120, 15
         )

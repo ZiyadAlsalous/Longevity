@@ -14,6 +14,7 @@ from src.config import (
     MAX_EXERCISE_MINUTES_PER_WEEK,
     MAX_SLEEP_HOURS,
     MIN_CHRONOLOGICAL_AGE,
+    MIN_SLEEP_HOURS,
     STRESS_SCALE_MAX,
     STRESS_SCALE_MIN,
     UNMAPPED,
@@ -55,7 +56,7 @@ class SunExposure(str, Enum):
 class Questionnaire(StrictModel):
     chronological_age: int = Field(ge=MIN_CHRONOLOGICAL_AGE, le=MAX_CHRONOLOGICAL_AGE)
     sex: Sex
-    sleep_hours: float = Field(ge=0.0, le=MAX_SLEEP_HOURS)
+    sleep_hours: float = Field(ge=MIN_SLEEP_HOURS, le=MAX_SLEEP_HOURS)
     alcohol_units_per_week: float = Field(ge=0.0, le=MAX_ALCOHOL_UNITS_PER_WEEK)
     smoking_status: SmokingStatus
     exercise_minutes_per_week: int = Field(ge=0, le=MAX_EXERCISE_MINUTES_PER_WEEK)
