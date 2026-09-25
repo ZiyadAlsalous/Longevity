@@ -147,16 +147,14 @@ def _factor_section(report: AgingReport, styles: dict[str, ParagraphStyle]) -> l
 
     section: list[Flowable] = [Paragraph("Contributing factors", styles["heading"])]
     for index, factor in enumerate(report.factors, start=1):
-        evidence = "; ".join(e.render() for e in factor.evidence)
         section.append(
             KeepTogether(
                 [
-                    Paragraph(f"{index}. {factor.title}", styles["subheading"]),
-                    Paragraph(factor.explanation, styles["body"]),
                     Paragraph(
-                        f"Confidence: {factor.confidence.value}. Based on {evidence}.",
-                        styles["muted"],
+                        f"{index}. {factor.title} ({factor.confidence.value} confidence)",
+                        styles["subheading"],
                     ),
+                    Paragraph(factor.explanation, styles["body"]),
                     Spacer(1, 8),
                 ]
             )

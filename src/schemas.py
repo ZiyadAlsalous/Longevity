@@ -167,9 +167,6 @@ class Evidence(StrictModel):
         max_length=200, description="The observed value, rendered for the reader."
     )
 
-    def render(self) -> str:
-        return f"{self.source.value}: {self.identifier} = {self.observed.rstrip('.')}"
-
 
 class Confidence(str, Enum):
     LOW = "low"

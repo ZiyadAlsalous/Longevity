@@ -93,8 +93,6 @@ def render_report(state: PipelineState) -> None:
         for index, factor in enumerate(report.factors, start=1):
             with st.expander(f"{index}. {factor.title}  ({factor.confidence.value} confidence)"):
                 st.write(factor.explanation)
-                for evidence in factor.evidence:
-                    st.caption(evidence.render())
 
     if report.recommendations:
         st.subheader("What to consider next")
