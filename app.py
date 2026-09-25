@@ -117,7 +117,7 @@ def main() -> None:
     st.title("Longevity Insights")
     st.caption(
         "Local demo of an evidence-grounded, non-diagnostic aging-signal pipeline. "
-        f"Provider: {settings.llm_provider}."
+        f"Model: {settings.llm_model}, running locally."
     )
     st.info(DISCLAIMER, icon="⚠️")
 

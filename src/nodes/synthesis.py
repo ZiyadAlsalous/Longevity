@@ -162,8 +162,11 @@ def enforce_grounding(
             kept.append(factor)
 
     kept = kept[:MAX_FACTORS]
-    titles = {factor.title for factor in kept}
-    recommendations = [rec for rec in report.recommendations if rec.linked_factor in titles]
+    # A recommendation may name its factor by title or by one of that factor's evidence
+    # identifiers; small local models tend to use the identifier.
+    links = {factor.title for factor in kept}
+    links |= {evidence.identifier for factor in kept for evidence in factor.evidence}
+    recommendations = [rec for rec in report.recommendations if rec.linked_factor in links]
     grounded = report.model_copy(
         update={
             "factors": kept,

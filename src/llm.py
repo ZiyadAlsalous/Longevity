@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 from pydantic import BaseModel
 
@@ -15,39 +15,62 @@ class StructuredLLM(Protocol):
     def generate[T: BaseModel](self, *, system: str, user: str, schema: type[T]) -> T: ...
 
 
-class LangChainLLM:
-    def __init__(self, provider: str, model: str) -> None:
-        if provider == "anthropic":
-            if not settings.anthropic_api_key:
-                raise LLMConfigError("Set ANTHROPIC_API_KEY in .env to run the pipeline.")
-            from langchain_anthropic import ChatAnthropic
+class OllamaLLM:
+    """A local model served by Ollama. Nothing leaves the machine.
 
-            self._chat = ChatAnthropic(
-                model=model,
-                timeout=settings.llm_timeout_seconds,
-                stop=None,
-                api_key=settings.anthropic_api_key,
-            )
-        elif provider == "openai":
-            if not settings.openai_api_key:
-                raise LLMConfigError("Set OPENAI_API_KEY in .env to run the pipeline.")
-            from langchain_openai import ChatOpenAI
+    Ollama constrains decoding to the schema, so the reply is always well-formed JSON;
+    Pydantic still validates it, because a well-formed reply can break a field constraint.
+    """
 
-            self._chat = ChatOpenAI(
-                model=model,
-                temperature=settings.llm_temperature,
-                timeout=settings.llm_timeout_seconds,
-                api_key=settings.openai_api_key,
-            )
-        else:
-            raise LLMConfigError(f"Unsupported provider: {provider}")
+    def __init__(self, model: str) -> None:
+        import ollama
+
+        self._model = model
+        self._client = ollama.Client(
+            host=settings.ollama_host, timeout=settings.llm_timeout_seconds
+        )
 
     def generate[T: BaseModel](self, *, system: str, user: str, schema: type[T]) -> T:
-        result = self._chat.with_structured_output(schema).invoke(
-            [("system", system), ("human", user)]
-        )
-        return schema.model_validate(result)
+        import ollama
+
+        try:
+            response = self._client.chat(
+                model=self._model,
+                messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+                format=_require_every_field(schema.model_json_schema()),
+                think=False,
+                options={"temperature": settings.llm_temperature},
+            )
+        except ConnectionError as exc:
+            raise LLMConfigError(
+                f"Ollama is not running at {settings.ollama_host}. Start the Ollama app."
+            ) from exc
+        except ollama.ResponseError as exc:
+            if exc.status_code == 404:
+                raise LLMConfigError(
+                    f"Model {self._model} is not installed. Run: ollama pull {self._model}"
+                ) from exc
+            raise
+        return schema.model_validate_json(response.message.content or "")
+
+
+def _require_every_field(node: Any) -> Any:
+    """Mark every property required, so constrained decoding cannot skip a field.
+
+    A field with a default is optional in Pydantic's schema, and small local models omit
+    optional fields: they returned a lab panel with no analytes at all. Nullable fields
+    are still allowed to be null.
+    """
+    if isinstance(node, dict):
+        if "properties" in node:
+            node["required"] = list(node["properties"])
+        for value in node.values():
+            _require_every_field(value)
+    elif isinstance(node, list):
+        for value in node:
+            _require_every_field(value)
+    return node
 
 
 def build_llm() -> StructuredLLM:
-    return LangChainLLM(settings.llm_provider, settings.llm_model)
+    return OllamaLLM(settings.llm_model)

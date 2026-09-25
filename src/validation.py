@@ -148,6 +148,14 @@ def normalize_blood_panel(panel: BloodPanel) -> BloodPanel:
             normalized.append(analyte.model_copy(update={"canonical_name": UNMAPPED}))
             continue
 
+        if analyte.value in (analyte.reference_range_low, analyte.reference_range_high):
+            unparsed.append(
+                f"{analyte.reported_name}: value {analyte.value} equals a printed range limit, "
+                "so it may be the range rather than the result; not compared."
+            )
+            normalized.append(analyte.model_copy(update={"canonical_name": UNMAPPED}))
+            continue
+
         factor = canonical_unit_factor(analyte.unit, reference)
         if factor is None:
             unparsed.append(

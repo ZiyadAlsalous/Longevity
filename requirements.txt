@@ -7,8 +7,8 @@
 
 # Pipeline
 langgraph==0.6.11
-langchain-core==0.3.86
-langchain-anthropic==0.3.22
+langchain-core==0.3.86   # required by langgraph
+ollama==0.6.2
 pydantic==2.13.5
 pydantic-settings==2.15.0
 PyYAML==6.0.3
@@ -26,5 +26,3 @@ opencv-python==4.14.0.94
 # Interface
 streamlit==1.63.0
 
-# Optional, only if LLM_PROVIDER=openai
-# langchain-openai

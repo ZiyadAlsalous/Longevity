@@ -3,7 +3,8 @@
 **A face photo, a blood test, and ten lifestyle questions, turned into an evidence-grounded aging report that never diagnoses, never doses, and checks its own output on every run.**
 
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![Claude](https://img.shields.io/badge/Claude-Sonnet%205-D97757?logo=anthropic&logoColor=white)](https://www.anthropic.com/)
+[![Qwen3](https://img.shields.io/badge/Qwen3-8B%20local-615CED)](https://ollama.com/library/qwen3)
+[![Ollama](https://img.shields.io/badge/Ollama-local%20LLM-000000?logo=ollama&logoColor=white)](https://ollama.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-parallel%20graph-1C3C3C)](https://langchain-ai.github.io/langgraph/)
 [![MiVOLO](https://img.shields.io/badge/MiVOLO-v2-FFD21E?logo=huggingface&logoColor=black)](https://huggingface.co/iitolstykh/mivolo_v2)
 [![PyTorch](https://img.shields.io/badge/PyTorch-vision-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
@@ -20,13 +21,13 @@ The hard part is not writing the report. It is **stopping a language model from 
 
 So the model never judges anything. It transcribes the lab report, and it writes the final prose from a block of pre-validated facts. Every rule that matters, from unit conversion to critical-value escalation, runs in plain Python. After the model writes, the pipeline checks the result against its own inputs and records whether the run passed.
 
-Everything runs on your own machine with your own API key. Nothing is stored after a run unless you download the PDF.
+Everything runs on your own machine, including the language model, so no health data leaves it and there is no API key or per-token cost. Nothing is stored after a run unless you download the PDF.
 
 ## Features
 
 - **Apparent age from the photo alone.** The face model receives only the image. Your stated age and questionnaire answers are used afterwards, so they cannot influence the prediction.
 - **Honest uncertainty.** The age range widens with age, because the model's error does: ±5.3 years under 30, ±7.9 in the 30s, ±9.5 from 40, measured on 30,000 labelled faces. A gap inside that range is never called notable.
-- **Lab reports read, then verified in code.** PyMuPDF extracts text, Tesseract handles scanned pages, and Claude transcribes results into a typed schema. Canonical names, unit conversion and range flags are computed in Python against a curated knowledge base.
+- **Lab reports read, then verified in code.** PyMuPDF extracts text, Tesseract handles scanned pages, and a local Qwen3 model transcribes results into a typed schema. Canonical names, unit conversion and range flags are computed in Python against a curated knowledge base. A value that equals its own printed range limit is set aside as a likely misread.
 - **Critical values escalate automatically.** A threshold crossing produces a clinician warning the model cannot drop, and the model is told not to give lifestyle advice for that value.
 - **Grounding enforced, not requested.** Any factor citing a biomarker that was never extracted is deleted after generation and recorded as removed.
 - **Every run evaluates itself.** Extracted numbers must appear in the PDF, invented biomarkers are counted, and the report is screened for doses and diagnoses. Described under Architecture.
@@ -45,7 +46,7 @@ Face photo (optional)        Lab report PDF (optional)        Questionnaire (req
         ▼                              ▼                                │
     face_age                       bloodwork                            │
  detect, align, blur gate      PyMuPDF text, OCR fallback               │
- MiVOLO v2 apparent age        Claude transcription                     │
+ MiVOLO v2 apparent age        Qwen3 transcription                      │
  (photo only, no answers)      units and flags in Python                │
         │                              │                                │
         └──────────────────────────────┼────────────────────────────────┘
@@ -60,7 +61,7 @@ Face photo (optional)        Lab report PDF (optional)        Questionnaire (req
                           │              clinician escalation text
                           ▼                         │
                       synthesis ◀───────────────────┘
-               Claude writes from a pipe-delimited evidence block
+               Qwen3 writes from a pipe-delimited evidence block
                factors citing absent biomarkers are deleted
                           │
                           ▼
@@ -100,7 +101,7 @@ Every threshold lives in `src/config.py`. The biomarker knowledge base is one YA
 
 **Orchestration:** LangGraph, with parallel ingestion branches and conditional escalation
 
-**LLM:** Claude Sonnet 5 for lab transcription and report writing, OpenAI supported through the same interface
+**LLM:** Qwen3 8B, run locally by Ollama, for lab transcription and report writing. Output is constrained to the Pydantic schema, then validated.
 
 **Vision:** MiVOLO v2 for apparent age, pretrained with its revision pinned · OpenCV detection, eye alignment and quality gate · PyTorch
 
@@ -135,6 +136,15 @@ pip install --no-deps --no-build-isolation "git+https://github.com/WildChlamydia
 
 MiVOLO is installed on its own line with `--no-deps` on purpose: its package metadata pulls in YOLO and video tooling this app never uses. Without the vision packages, a photo is simply reported as not scored and everything else works.
 
+The language model runs locally through [Ollama](https://ollama.com/). Install it, then download the model once (5 GB):
+
+```bash
+brew install ollama        # or download the app from ollama.com
+ollama pull qwen3:8b
+```
+
+Qwen3 8B needs about 16 GB of RAM. On an 8 GB machine, set `LLM_MODEL=qwen3:4b`.
+
 Scanned lab reports additionally need Tesseract:
 
 ```bash
@@ -148,13 +158,12 @@ sudo apt-get install -y tesseract-ocr   # Debian or Ubuntu
 cp .env.example .env
 ```
 
-Then add your key:
+No key is needed. The defaults work as they are:
 
 ```ini
-ANTHROPIC_API_KEY=...            # the only key needed
-LLM_PROVIDER=anthropic
-LLM_MODEL=claude-sonnet-5
-TORCH_DEVICE=auto                # cuda, mps, or cpu
+LLM_MODEL=qwen3:8b                  # any Ollama model that supports structured output
+OLLAMA_HOST=http://localhost:11434
+TORCH_DEVICE=auto                   # cuda, mps, or cpu
 ```
 
 **4. Run**
@@ -183,7 +192,7 @@ Longevity/
 │   ├── schemas.py               # Pydantic models, evaluation results, graph state
 │   ├── graph.py                 # LangGraph wiring, run_pipeline(), command line
 │   ├── validation.py            # Intake rules, units, ranges, escalation, retrieval
-│   ├── llm.py                   # Provider interface and LangChain adapter
+│   ├── llm.py                   # Local model through Ollama, schema-constrained output
 │   ├── image_preprocessing.py   # Face detection, alignment, quality gate
 │   ├── biomarkers.yaml          # Curated knowledge base, cited
 │   └── nodes/
@@ -194,10 +203,10 @@ Longevity/
 │       └── report.py            #   ReportLab PDF
 ├── requirements.txt             # Core packages, pinned to the tested versions
 ├── requirements-vision.txt      # Optional: PyTorch and MiVOLO for the face-age model
-└── .env.example                 # Settings template. Copy to .env and add your key.
+└── .env.example                 # Settings template. Copy to .env; the defaults work.
 ```
 
-Uploaded files go to a temporary folder that is deleted after each run. `.env` is gitignored, so your key never reaches GitHub.
+Uploaded files go to a temporary folder that is deleted after each run. `.env` is gitignored.
 
 ## Roadmap
 

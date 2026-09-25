@@ -92,12 +92,10 @@ ESCALATION_TEMPLATE: str = (
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    llm_provider: Literal["anthropic", "openai"] = "anthropic"
-    llm_model: str = "claude-sonnet-5"
+    llm_model: str = "qwen3:8b"
     llm_temperature: float = 0.0
-    llm_timeout_seconds: float = 60.0
-    anthropic_api_key: str | None = None
-    openai_api_key: str | None = None
+    llm_timeout_seconds: float = 300.0
+    ollama_host: str = "http://localhost:11434"
     tesseract_cmd: str | None = None
     default_report_path: Path = PROJECT_ROOT / "report.pdf"
     torch_device: Literal["auto", "cpu", "cuda", "mps"] = "auto"
