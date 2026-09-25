@@ -91,6 +91,7 @@ class Settings(BaseSettings):
     llm_model: str = "qwen3:8b"
     llm_temperature: float = 0.0
     llm_timeout_seconds: float = 300.0
+    llm_max_tokens: int = 4096
     ollama_host: str = "http://localhost:11434"
     tesseract_cmd: str | None = None
     default_report_path: Path = PROJECT_ROOT / "report.pdf"

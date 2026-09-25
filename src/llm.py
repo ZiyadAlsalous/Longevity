@@ -36,7 +36,11 @@ class OllamaLLM:
                 messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
                 format=_require_every_field(schema.model_json_schema()),
                 think=False,
-                options={"temperature": settings.llm_temperature},
+                options={
+                    "temperature": settings.llm_temperature,
+                    # Stops a looping model instead of letting it run to the timeout.
+                    "num_predict": settings.llm_max_tokens,
+                },
             )
         except ConnectionError as exc:
             raise LLMConfigError(
@@ -48,6 +52,11 @@ class OllamaLLM:
                     f"Model {self._model} is not installed. Run: ollama pull {self._model}"
                 ) from exc
             raise
+        if response.done_reason == "length":
+            raise LLMConfigError(
+                f"The model stopped at the {settings.llm_max_tokens}-token limit without finishing. "
+                "Run it again, or raise LLM_MAX_TOKENS in .env."
+            )
         return schema.model_validate_json(response.message.content or "")
 
 
