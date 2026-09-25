@@ -9,15 +9,17 @@ from src.schemas import (
     BiomarkerReference,
     BloodAnalyte,
     BloodPanel,
+    Confidence,
     ContributingFactor,
     CriticalFinding,
+    Evidence,
     EvidenceSource,
     FaceAgeSignal,
     GroundingCheck,
     PipelineState,
     Questionnaire,
 )
-from src.validation import display_name, summarize_lifestyle_flags
+from src.validation import display_name, load_biomarker_reference, summarize_lifestyle_flags
 
 SYNTHESIS_SYSTEM = f"""You write educational wellness summaries from pre-validated data.
 
@@ -42,7 +44,12 @@ Grounding, which is enforced after you answer:
 
 Write for an intelligent adult with no clinical training. At most {MAX_FACTORS} factors
 and {MAX_RECOMMENDATIONS} recommendations, ordered by how well the evidence supports them.
+Be concise. The summary is two to four complete sentences. Put the apparent-age reading in
+apparent_age_note only, not as a factor. A LIFESTYLE line marked "not flagged" was answered
+and is not a concern; it is not missing data.
 """
+
+CONFIDENCE_ORDER = [Confidence.LOW, Confidence.MODERATE, Confidence.HIGH]
 
 
 def synthesis_node(state: PipelineState) -> dict[str, Any]:
@@ -57,7 +64,7 @@ def synthesis_node(state: PipelineState) -> dict[str, Any]:
         warnings=state.get("warnings", []),
     )
     generated = build_llm().generate(system=SYNTHESIS_SYSTEM, user=prompt, schema=AgingReport)
-    grounded, dropped = enforce_grounding(generated, panel)
+    grounded, dropped = enforce_grounding(generated, panel, state.get("knowledge_context", []))
     report = grounded.model_copy(
         update={"disclaimer": DISCLAIMER, "escalation": state.get("escalation") or None}
     )
@@ -93,10 +100,10 @@ def build_evidence_prompt(
             f"{face_age.interval_high}) vs stated {face_age.chronological_age}"
         )
 
-    lines += [
-        f"LIFESTYLE | {field} | {description}"
-        for field, description in summarize_lifestyle_flags(questionnaire)
-    ]
+    # Every answer is listed, so an unflagged answer is not mistaken for missing data.
+    flagged = dict(summarize_lifestyle_flags(questionnaire))
+    for field, answer in _lifestyle_answers(questionnaire):
+        lines.append(f"LIFESTYLE | {field} | {flagged.get(field, f'{answer}, not flagged')}")
 
     critical_names = {finding.canonical_name for finding in critical_findings}
     for analyte in _mapped_analytes(panel):
@@ -134,27 +141,67 @@ def build_evidence_prompt(
     return "\n".join(lines)
 
 
-def invented_biomarkers(factor: ContributingFactor, panel: BloodPanel | None) -> list[str]:
-    """Biomarkers a factor cites that were never supplied."""
-    available = {analyte.canonical_name for analyte in _mapped_analytes(panel)}
+def invented_biomarkers(
+    factor: ContributingFactor, panel: BloodPanel | None, context: list[BiomarkerReference]
+) -> list[str]:
+    """Biomarkers a factor cites that were never supplied, whatever source it claims."""
+    measured = {analyte.canonical_name for analyte in _mapped_analytes(panel)}
+    supplied = measured | {entry.canonical_name for entry in context}
+    known = set(load_biomarker_reference())
     return sorted(
         {
             evidence.identifier
             for evidence in factor.evidence
-            if evidence.source is EvidenceSource.BIOMARKER and evidence.identifier not in available
+            if evidence.identifier not in supplied
+            and (evidence.identifier in known or evidence.source is EvidenceSource.BIOMARKER)
         }
     )
 
 
+def correct_factor(
+    factor: ContributingFactor, panel: BloodPanel | None, context: list[BiomarkerReference]
+) -> ContributingFactor:
+    """Set each evidence source from its identifier, then cap confidence by the evidence."""
+    measured = {analyte.canonical_name for analyte in _mapped_analytes(panel)}
+    context_names = {entry.canonical_name for entry in context}
+    evidence: list[Evidence] = []
+    for item in factor.evidence:
+        identifier = item.identifier.split("|")[-1].strip()
+        source = item.source
+        if identifier in measured:
+            source = EvidenceSource.BIOMARKER
+        elif identifier in context_names:
+            source = EvidenceSource.KNOWLEDGE_BASE
+        elif identifier in Questionnaire.model_fields:
+            source = EvidenceSource.QUESTIONNAIRE
+        elif identifier == "age_gap_years":
+            source = EvidenceSource.FACE_MODEL
+        corrected = item.model_copy(update={"identifier": identifier, "source": source})
+        if all((e.source, e.identifier) != (source, identifier) for e in evidence):
+            evidence.append(corrected)
+
+    # Low for one questionnaire answer, moderate for one kind of input, high only when
+    # independent kinds of input agree.
+    sources = {item.source for item in evidence}
+    if sources == {EvidenceSource.QUESTIONNAIRE} and len({e.identifier for e in evidence}) == 1:
+        cap = Confidence.LOW
+    elif len(sources) < 2:
+        cap = Confidence.MODERATE
+    else:
+        cap = Confidence.HIGH
+    confidence = min(factor.confidence, cap, key=CONFIDENCE_ORDER.index)
+    return factor.model_copy(update={"evidence": evidence, "confidence": confidence})
+
+
 def enforce_grounding(
-    report: AgingReport, panel: BloodPanel | None
+    report: AgingReport, panel: BloodPanel | None, context: list[BiomarkerReference]
 ) -> tuple[AgingReport, list[str]]:
-    """Drop ungrounded factors and their recommendations."""
+    """Correct sources and confidence, then drop ungrounded factors and their recommendations."""
     kept: list[ContributingFactor] = []
     dropped: list[str] = []
     notes: list[str] = []
-    for factor in report.factors:
-        invented = invented_biomarkers(factor, panel)
+    for factor in (correct_factor(f, panel, context) for f in report.factors):
+        invented = invented_biomarkers(factor, panel, context)
         if invented:
             dropped.append(factor.title)
             notes.append(
@@ -177,6 +224,17 @@ def enforce_grounding(
         }
     )
     return grounded, dropped
+
+
+def _lifestyle_answers(questionnaire: Questionnaire) -> list[tuple[str, str]]:
+    return [
+        ("sleep_hours", f"{questionnaire.sleep_hours} hours per night"),
+        ("exercise_minutes_per_week", f"{questionnaire.exercise_minutes_per_week} minutes"),
+        ("alcohol_units_per_week", f"{questionnaire.alcohol_units_per_week} units"),
+        ("smoking_status", questionnaire.smoking_status.value),
+        ("perceived_stress", f"{questionnaire.perceived_stress} of 10"),
+        ("sun_exposure", questionnaire.sun_exposure.value),
+    ]
 
 
 def _mapped_analytes(panel: BloodPanel | None) -> list[BloodAnalyte]:

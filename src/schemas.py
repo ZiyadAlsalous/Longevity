@@ -12,6 +12,8 @@ from src.config import (
     MAX_ALCOHOL_UNITS_PER_WEEK,
     MAX_CHRONOLOGICAL_AGE,
     MAX_EXERCISE_MINUTES_PER_WEEK,
+    MAX_FACTORS,
+    MAX_RECOMMENDATIONS,
     MAX_SLEEP_HOURS,
     MIN_CHRONOLOGICAL_AGE,
     MIN_SLEEP_HOURS,
@@ -99,9 +101,9 @@ class RangeFlag(str, Enum):
 class BloodAnalyte(StrictModel):
     # Set in Python, hidden from the model.
     canonical_name: SkipJsonSchema[str] = UNMAPPED
-    reported_name: str = Field(description="Analyte name exactly as printed.")
+    reported_name: str = Field(max_length=80, description="Analyte name exactly as printed.")
     value: float = Field(description="Numeric result, as printed.")
-    unit: str = Field(description="Unit exactly as printed.")
+    unit: str = Field(max_length=20, description="Unit exactly as printed.")
     reference_range_low: float | None = Field(
         default=None, description="Lower bound printed on the report, null if absent."
     )
@@ -112,11 +114,15 @@ class BloodAnalyte(StrictModel):
 
 
 class BloodPanel(StrictModel):
-    analytes: list[BloodAnalyte] = Field(default_factory=list)
+    # Size limits stop a looping model: it cannot write past them.
+    analytes: list[BloodAnalyte] = Field(default_factory=list, max_length=60)
     collected_on: date | None = Field(default=None, description="Specimen collection date.")
-    lab_name: str | None = Field(default=None, description="Issuing laboratory, if printed.")
-    unparsed_fields: list[str] = Field(
+    lab_name: str | None = Field(
+        default=None, max_length=100, description="Issuing laboratory, if printed."
+    )
+    unparsed_fields: list[Annotated[str, Field(max_length=200)]] = Field(
         default_factory=list,
+        max_length=20,
         description="Result-looking lines that could not be transcribed confidently. "
         "Surfaced verbatim rather than guessed at.",
     )
@@ -154,8 +160,12 @@ class EvidenceSource(str, Enum):
 
 class Evidence(StrictModel):
     source: EvidenceSource
-    identifier: str = Field(description="Canonical analyte name or questionnaire field name.")
-    observed: str = Field(description="The observed value, rendered for the reader.")
+    identifier: str = Field(
+        max_length=60, description="Canonical analyte name or questionnaire field name."
+    )
+    observed: str = Field(
+        max_length=200, description="The observed value, rendered for the reader."
+    )
 
     def render(self) -> str:
         return f"{self.source.value}: {self.identifier} = {self.observed.rstrip('.')}"
@@ -168,30 +178,44 @@ class Confidence(str, Enum):
 
 
 class ContributingFactor(StrictModel):
-    title: str = Field(description="Short name, for example 'Elevated fasting glucose'.")
-    explanation: str = Field(description="Plain-language, non-diagnostic explanation.")
+    title: str = Field(
+        max_length=80, description="Short name, for example 'Elevated fasting glucose'."
+    )
+    explanation: str = Field(
+        max_length=800, description="Plain-language, non-diagnostic explanation."
+    )
     evidence: list[Evidence] = Field(
-        min_length=1, description="At least one identifier from the evidence block."
+        min_length=1, max_length=5, description="At least one identifier from the evidence block."
     )
     confidence: Confidence
 
 
 class Recommendation(StrictModel):
     priority: int = Field(ge=1, description="1 is highest priority.")
-    action: str = Field(description="A behaviour. Never a drug, dose, or supplement regimen.")
-    rationale: str
-    linked_factor: str = Field(description="Title of the factor this addresses.")
+    action: str = Field(
+        max_length=300, description="A behaviour. Never a drug, dose, or supplement regimen."
+    )
+    rationale: str = Field(max_length=500)
+    linked_factor: str = Field(max_length=80, description="Title of the factor this addresses.")
 
 
 class AgingReport(StrictModel):
-    summary: str = Field(description="Two to four sentences on the aging signal.")
-    apparent_age_note: str | None = Field(
-        default=None, description="How the perceived-age gap was read, if a photo was scored."
+    summary: str = Field(
+        max_length=1000, description="Two to four complete sentences on the aging signal."
     )
-    factors: list[ContributingFactor] = Field(default_factory=list)
-    recommendations: list[Recommendation] = Field(default_factory=list)
-    insufficient_data: list[str] = Field(
-        default_factory=list, description="What could not be assessed. Preferred to a guess."
+    apparent_age_note: str | None = Field(
+        default=None,
+        max_length=500,
+        description="How the perceived-age gap was read, if a photo was scored.",
+    )
+    factors: list[ContributingFactor] = Field(default_factory=list, max_length=MAX_FACTORS)
+    recommendations: list[Recommendation] = Field(
+        default_factory=list, max_length=MAX_RECOMMENDATIONS
+    )
+    insufficient_data: list[Annotated[str, Field(max_length=300)]] = Field(
+        default_factory=list,
+        max_length=10,
+        description="What could not be assessed. Preferred to a guess.",
     )
     escalation: str | None = Field(default=None, description="Attached by code, not by the model.")
     disclaimer: str = Field(default="", description="Attached by code, not by the model.")
