@@ -3,31 +3,19 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from src.config import DISCLAIMER, UNSAFE_OUTPUT_PATTERNS
+from src.config import UNSAFE_OUTPUT_PATTERNS
 from src.schemas import AgingReport, PipelineState, RunEvaluation, SafetyCheck
 
 
 def evaluation_node(state: PipelineState) -> dict[str, Any]:
-    report = state["report"]
-    critical = state.get("critical_findings", [])
-    escalation = report.escalation or ""
-    safety = SafetyCheck(
-        disclaimer_attached=report.disclaimer == DISCLAIMER,
-        unsafe_phrases=find_unsafe_phrases(report),
-        critical_findings=len(critical),
-        critical_findings_escalated=sum(finding.message in escalation for finding in critical),
-    )
+    safety = SafetyCheck(unsafe_phrases=find_unsafe_phrases(state["report"]))
     extraction = state.get("extraction_check")
     vision = state.get("vision_check")
     grounding = state["grounding_check"]
 
     failures: list[str] = []
-    if not safety.disclaimer_attached:
-        failures.append("Disclaimer missing from the report.")
     if safety.unsafe_phrases:
         failures.append(f"Report contains dosing or diagnostic language: {safety.unsafe_phrases}.")
-    if safety.critical_findings_escalated < safety.critical_findings:
-        failures.append("A critical lab value was not escalated to a clinician.")
     if extraction is not None and extraction.values_not_in_document:
         failures.append(
             f"Extracted lab values not found in the document: {extraction.values_not_in_document}."

@@ -56,20 +56,14 @@ def synthesis_node(state: PipelineState) -> dict[str, Any]:
         warnings=state.get("warnings", []),
     )
     generated = build_llm().generate(system=SYNTHESIS_SYSTEM, user=prompt, schema=AgingReport)
-    grounded = enforce_grounding(generated, panel)
+    grounded, dropped = enforce_grounding(generated, panel)
     report = grounded.model_copy(
-        update={
-            "disclaimer": DISCLAIMER,
-            "escalation": state.get("escalation") or None,
-            "recommendations": grounded.recommendations[:MAX_RECOMMENDATIONS],
-        }
+        update={"disclaimer": DISCLAIMER, "escalation": state.get("escalation") or None}
     )
     check = GroundingCheck(
         factors_generated=len(generated.factors),
         factors_kept=len(report.factors),
-        factors_dropped_for_invented_biomarkers=[
-            factor.title for factor in generated.factors if invented_biomarkers(factor, panel)
-        ],
+        factors_dropped_for_invented_biomarkers=dropped,
         recommendations_generated=len(generated.recommendations),
         recommendations_kept=len(report.recommendations),
     )
@@ -149,13 +143,18 @@ def invented_biomarkers(factor: ContributingFactor, panel: BloodPanel | None) ->
     )
 
 
-def enforce_grounding(report: AgingReport, panel: BloodPanel | None) -> AgingReport:
+def enforce_grounding(
+    report: AgingReport, panel: BloodPanel | None
+) -> tuple[AgingReport, list[str]]:
+    """Drop factors citing biomarkers that were never supplied; return the dropped titles."""
     kept: list[ContributingFactor] = []
     dropped: list[str] = []
+    notes: list[str] = []
     for factor in report.factors:
         invented = invented_biomarkers(factor, panel)
         if invented:
-            dropped.append(
+            dropped.append(factor.title)
+            notes.append(
                 f"'{factor.title}' cited biomarkers not present in the inputs: "
                 f"{', '.join(invented)}."
             )
@@ -164,15 +163,15 @@ def enforce_grounding(report: AgingReport, panel: BloodPanel | None) -> AgingRep
 
     kept = kept[:MAX_FACTORS]
     titles = {factor.title for factor in kept}
-    return report.model_copy(
+    recommendations = [rec for rec in report.recommendations if rec.linked_factor in titles]
+    grounded = report.model_copy(
         update={
             "factors": kept,
-            "recommendations": [
-                rec for rec in report.recommendations if rec.linked_factor in titles
-            ],
-            "insufficient_data": [*report.insufficient_data, *dropped],
+            "recommendations": recommendations[:MAX_RECOMMENDATIONS],
+            "insufficient_data": [*report.insufficient_data, *notes],
         }
     )
+    return grounded, dropped
 
 
 def _mapped_analytes(panel: BloodPanel | None) -> list[BloodAnalyte]:

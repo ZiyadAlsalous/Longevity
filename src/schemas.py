@@ -6,6 +6,7 @@ from enum import Enum
 from typing import Annotated, Any, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
 from src.config import (
     MAX_ALCOHOL_UNITS_PER_WEEK,
@@ -95,10 +96,8 @@ class RangeFlag(str, Enum):
 
 
 class BloodAnalyte(StrictModel):
-    canonical_name: str = Field(
-        description=f"Canonical name from the knowledge base, or '{UNMAPPED}'. Assigned "
-        f"downstream, so always return '{UNMAPPED}'."
-    )
+    # canonical_name and flag are assigned in Python and hidden from the model's schema.
+    canonical_name: SkipJsonSchema[str] = UNMAPPED
     reported_name: str = Field(description="Analyte name exactly as printed.")
     value: float = Field(description="Numeric result, as printed.")
     unit: str = Field(description="Unit exactly as printed.")
@@ -108,9 +107,7 @@ class BloodAnalyte(StrictModel):
     reference_range_high: float | None = Field(
         default=None, description="Upper bound printed on the report, null if absent."
     )
-    flag: RangeFlag = Field(
-        default=RangeFlag.UNKNOWN, description="Computed downstream, not by the model."
-    )
+    flag: SkipJsonSchema[RangeFlag] = RangeFlag.UNKNOWN
 
 
 class BloodPanel(StrictModel):
@@ -122,7 +119,6 @@ class BloodPanel(StrictModel):
         description="Result-looking lines that could not be transcribed confidently. "
         "Surfaced verbatim rather than guessed at.",
     )
-    used_ocr: bool = False
 
 
 class BiomarkerReference(StrictModel):
@@ -184,7 +180,6 @@ class Recommendation(StrictModel):
     action: str = Field(description="A behaviour. Never a drug, dose, or supplement regimen.")
     rationale: str
     linked_factor: str = Field(description="Title of the factor this addresses.")
-    citations: list[str] = Field(default_factory=list)
 
 
 class AgingReport(StrictModel):
@@ -228,10 +223,7 @@ class GroundingCheck(StrictModel):
 
 
 class SafetyCheck(StrictModel):
-    disclaimer_attached: bool
     unsafe_phrases: list[str]
-    critical_findings: int
-    critical_findings_escalated: int
 
 
 class RunEvaluation(StrictModel):

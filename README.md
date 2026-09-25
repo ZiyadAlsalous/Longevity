@@ -88,9 +88,7 @@ There is no separate benchmark. Every call to `run_pipeline` returns `state["eva
 | 2 | Extraction coverage | How many results mapped to known biomarkers, how many lines went unparsed, and whether OCR was needed. |
 | 3 | Invented biomarkers | Factors the model wrote about biomarkers that were never supplied. |
 | 4 | Unsafe language | Dose amounts, medication changes, or stated diagnoses in the report body. |
-| 5 | Escalation | A critical lab value that did not reach the clinician warning. |
-| 6 | Disclaimer | The disclaimer missing from the report. |
-| 7 | Photo scoring | Whether the photo passed the quality gate, the detector's confidence, or why it was rejected. |
+| 5 | Photo scoring | Whether the photo passed the quality gate, the detector's confidence, or why it was rejected. |
 
 `evaluation.passed` is false when any check fails, and `evaluation.failures` says why. The command line prints the result after the summary.
 

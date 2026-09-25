@@ -19,12 +19,11 @@ from src.llm import build_llm
 from src.schemas import BloodPanel, ExtractionCheck, PipelineState
 from src.validation import normalize_blood_panel
 
-EXTRACTION_SYSTEM = f"""You transcribe laboratory reports into structured data.
+EXTRACTION_SYSTEM = """You transcribe laboratory reports into structured data.
 
 Rules:
 - Transcribe only what is printed. Never infer, convert, correct, or complete a value.
 - Copy analyte names and units exactly as they appear, including capitalisation.
-- Set canonical_name to "{UNMAPPED}"; canonical names are assigned downstream, not by you.
 - Leave reference_range_low or reference_range_high null when the report does not print one.
 - Put any line that looks like a result but cannot be transcribed confidently into
   unparsed_fields, verbatim. A surfaced unparsed line is always better than a guess.
@@ -154,7 +153,7 @@ def bloodwork_node(state: PipelineState) -> dict[str, Any]:
         # should skip the lab branch, not abort a run that can still report on the intake.
         return {"warnings": [f"Lab extraction failed: {type(exc).__name__}: {exc}"]}
 
-    panel = normalize_blood_panel(transcribed).model_copy(update={"used_ocr": pdf.used_ocr})
+    panel = normalize_blood_panel(transcribed)
     check = ExtractionCheck(
         analytes_extracted=len(panel.analytes),
         analytes_mapped=sum(analyte.canonical_name != UNMAPPED for analyte in panel.analytes),

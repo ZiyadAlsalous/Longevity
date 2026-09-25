@@ -134,9 +134,7 @@ def normalize_blood_panel(panel: BloodPanel) -> BloodPanel:
     seen: set[str] = set()
 
     for analyte in panel.analytes:
-        canonical = canonical_analyte_name(analyte.reported_name) or canonical_analyte_name(
-            analyte.canonical_name
-        )
+        canonical = canonical_analyte_name(analyte.reported_name)
         if canonical is None:
             normalized.append(analyte.model_copy(update={"canonical_name": UNMAPPED}))
             continue
