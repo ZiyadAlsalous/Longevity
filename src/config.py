@@ -65,6 +65,7 @@ UNSAFE_OUTPUT_PATTERNS: tuple[str, ...] = (
     r"\b(?:signs?|symptoms?)\s+of\b",
     r"\bconsistent\s+with\b",
     r"\bdeficien(?:cy|cies|t)\b",
+    r"\bDr\.?\s+[A-Z][a-z]",
     r"\b\d+(?:\.\d+)?\s*(?:mg|mcg|µg|ug|iu|milligrams?|micrograms?)\b(?!\s*/)",
     r"(?<!not )(?<!never )(?<!n't )\b(?:start|stop|increase|decrease|double|halve)\s+"
     r"(?:taking|your\s+(?:dose|medication))\b",

@@ -5,7 +5,7 @@ from typing import Any
 
 from src.config import DISCLAIMER, MAX_FACTORS, MAX_RECOMMENDATIONS, UNMAPPED
 from src.llm import build_llm
-from src.nodes.evaluation import unsafe_sentences
+from src.nodes.evaluation import remove_unsafe_sentences, unsafe_sentences
 from src.schemas import (
     AgingReport,
     BiomarkerReference,
@@ -42,6 +42,8 @@ Scope, which you never step outside:
   and speaking with a clinician.
 - For an out-of-range lab result, recommend discussing it with a clinician. Never name a
   condition it could mean.
+- Never name a person, doctor, laboratory or clinic, even one printed on the report. Say "a
+  clinician".
 - Base every statement on the evidence lines, never on assumptions about a person's sex,
   ethnicity, or appearance.
 
@@ -110,6 +112,8 @@ def synthesis_node(state: PipelineState) -> dict[str, Any]:
             user=prompt,
             schema=AgingReport,
         )
+    # Anything still unsafe after the rewrites is removed rather than shown, and recorded.
+    generated, removed = remove_unsafe_sentences(generated)
     grounded, dropped = enforce_grounding(generated, panel, context)
     report = grounded.model_copy(
         update={"disclaimer": DISCLAIMER, "escalation": state.get("escalation") or None}
@@ -120,8 +124,14 @@ def synthesis_node(state: PipelineState) -> dict[str, Any]:
         factors_dropped_for_invented_biomarkers=dropped,
         recommendations_generated=len(generated.recommendations),
         recommendations_kept=len(report.recommendations),
+        unsafe_sentences_removed=removed,
     )
-    return {"report": report, "grounding_check": check}
+    update: dict[str, Any] = {"report": report, "grounding_check": check}
+    if removed:
+        update["warnings"] = [
+            f"{len(removed)} sentence(s) with diagnostic or dosing language were removed from the plan."
+        ]
+    return update
 
 
 def build_evidence_prompt(

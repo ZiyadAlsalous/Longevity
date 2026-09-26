@@ -186,7 +186,7 @@ def check_ranges(analytes: list[BloodAnalyte], lines: list[str]) -> list[BloodAn
         bounds = [
             b for b in (analyte.reference_range_low, analyte.reference_range_high) if b is not None
         ]
-        on_line = row is not None and all(abs(b) in printed_numbers(lines[row]) for b in bounds)
+        on_line = row is not None and _range_printed_beside(analyte, lines[row])
         checked.append(analyte if on_line else _without_range(analyte))
 
     # Two results on one line with one printed range: the range belongs to the result printed
@@ -216,6 +216,33 @@ def check_ranges(analytes: list[BloodAnalyte], lines: list[str]) -> list[BloodAn
                         }
                     )
                 checked[i] = _without_range(checked[i])
+    return checked
+
+
+def _range_printed_beside(analyte: BloodAnalyte, line: str) -> bool:
+    """Each bound is printed on the line, and apart from the value: a number printed once cannot
+    be both the result and its own range."""
+    numbers = [value for _, value in _numbers_at(line)]
+    for bound in _bounds(analyte):
+        needed = 2 if abs(bound) == abs(analyte.value) else 1
+        if numbers.count(abs(bound)) < needed:
+            return False
+    return True
+
+
+def check_units(analytes: list[BloodAnalyte], lines: list[str]) -> list[BloodAnalyte]:
+    """Keep a unit only if it is printed on the result's own line."""
+    checked: list[BloodAnalyte] = []
+    for analyte in analytes:
+        row = row_of(analyte, lines)
+        unit = analyte.unit.strip()
+        words = re.findall(r"[a-z0-9]+", unit.lower())
+        printed = row is not None and (
+            words[0] in re.findall(r"[a-z0-9]+", lines[row].lower())
+            if words
+            else unit in lines[row]
+        )
+        checked.append(analyte if not unit or printed else analyte.model_copy(update={"unit": ""}))
     return checked
 
 
@@ -271,7 +298,7 @@ def bloodwork_node(state: PipelineState) -> dict[str, Any]:
     # number with no unit and no range, because it cannot be interpreted.
     lines = pdf.text.splitlines()
     on_row = check_ranges([a for a in transcribed.analytes if row_of(a, lines) is not None], lines)
-    verified = [a for a in on_row if a.unit.strip() or _bounds(a)]
+    verified = [a for a in check_units(on_row, lines) if a.unit.strip() or _bounds(a)]
     kept = {(a.reported_name, a.value) for a in verified}
     rejected = [a for a in transcribed.analytes if (a.reported_name, a.value) not in kept]
     transcribed = transcribed.model_copy(

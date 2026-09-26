@@ -273,6 +273,7 @@ class GroundingCheck(StrictModel):
     factors_dropped_for_invented_biomarkers: list[str]
     recommendations_generated: int
     recommendations_kept: int
+    unsafe_sentences_removed: list[str] = Field(default_factory=list)
 
 
 class SafetyCheck(StrictModel):
