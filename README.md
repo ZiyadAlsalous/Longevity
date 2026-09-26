@@ -32,7 +32,7 @@ Everything runs on your own machine, including the language model, so no health 
 - **Grounding enforced, not requested.** Any factor citing a biomarker that was never extracted is deleted after generation and recorded as removed.
 - **Every run evaluates itself.** Extracted numbers must appear in the PDF, invented biomarkers are counted, and the report is screened for doses and diagnoses. Described under Architecture.
 - **Missing input degrades, never crashes.** No photo, a blurry photo, an unreadable PDF, or a provider timeout each becomes a warning, and the rest of the report still runs.
-- **Bias checked, not assumed.** Sex is never sent to the model, and the photo quality gate measures sharpness after normalising contrast so darker skin is not rejected as blurry. Remaining gaps are listed under Roadmap.
+- **Bias checked, not assumed.** Sex is never sent to the model, and the photo quality gate measures sharpness after normalising contrast so darker skin is not rejected as blurry. Faces are found by YuNet, a neural detector that roughly halved rejections in every group compared with the Haar cascade it replaced. Remaining gaps are listed under Roadmap.
 - **No database.** Health data lives in memory for one run. Uploads go to a temporary folder that is deleted when the run returns.
 
 ## Architecture
@@ -103,7 +103,7 @@ Every threshold lives in `src/config.py`. The biomarker knowledge base is one YA
 
 **LLM:** Qwen3 8B, run locally by Ollama, for lab transcription and report writing. Output is constrained to the Pydantic schema, then validated.
 
-**Vision:** MiVOLO v2 for apparent age, pretrained with its revision pinned · OpenCV detection, eye alignment and quality gate · PyTorch
+**Vision:** MiVOLO v2 for apparent age, pretrained with its revision pinned · YuNet face and eye detection (OpenCV, model bundled) · eye alignment and quality gate · PyTorch
 
 **Documents:** PyMuPDF for text · Tesseract for scanned pages · ReportLab for the PDF report
 
@@ -195,6 +195,7 @@ Longevity/
 │   ├── llm.py                   # Local model through Ollama, schema-constrained output
 │   ├── image_preprocessing.py   # Face detection, alignment, quality gate
 │   ├── biomarkers.yaml          # Curated knowledge base, cited
+│   ├── models/                  # YuNet face detector (232 KB, from the OpenCV model zoo)
 │   └── nodes/
 │       ├── face_age.py          #   Apparent age from the photo, compared with stated age later
 │       ├── bloodwork.py         #   PDF text, OCR fallback, transcription, extraction check
@@ -210,7 +211,8 @@ Uploaded files go to a temporary folder that is deleted after each run. `.env` i
 
 ## Roadmap
 
-- [ ] A modern face detector. The Haar cascade rejects photos of Black faces roughly twice as often as others.
+- [x] A modern face detector. YuNet replaced the Haar cascade and roughly halved rejections for every group.
+- [ ] Close the remaining gap: Black faces are still rejected more often than others, so the cause (detection or the quality gate) needs measuring.
 - [ ] Reduce age error for people over 60 without making younger ages worse. Fine-tuning the last layers fixed older ages but cost accuracy in the 30s and 40s.
 - [ ] Sex- and age-specific reference ranges, so thyroid and iron markers are judged against the right population
 - [ ] Show the quality checks inside the PDF, not only in the returned data

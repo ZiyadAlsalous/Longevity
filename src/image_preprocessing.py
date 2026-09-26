@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import threading
+from functools import lru_cache
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import cv2
 import numpy as np
@@ -11,11 +13,9 @@ from src.config import (
     DETECTION_PAD_FRACTION,
     FACE_CROP_MARGIN,
     FACE_CROP_SIZE,
-    HAAR_EYE_MIN_NEIGHBORS,
-    HAAR_MIN_NEIGHBORS,
-    HAAR_SCALE_FACTOR,
+    FACE_DETECTOR_MIN_SCORE,
+    FACE_DETECTOR_PATH,
     MAX_MEAN_BRIGHTNESS,
-    MIN_FACE_PIXELS,
     MIN_MEAN_BRIGHTNESS,
     MIN_NORMALIZED_SHARPNESS,
 )
@@ -26,11 +26,13 @@ class ImageQualityError(ValueError):
 
 
 class FaceBox(NamedTuple):
-    x: int
-    y: int
-    width: int
-    height: int
+    x: float
+    y: float
+    width: float
+    height: float
     confidence: float
+    left_eye: tuple[float, float]
+    right_eye: tuple[float, float]
 
 
 def prepare_face(path: str | Path) -> tuple[np.ndarray, float]:
@@ -55,44 +57,40 @@ def pad_for_detection(image: np.ndarray) -> np.ndarray:
 
 
 def detect_face(image: np.ndarray) -> FaceBox:
-    """Find exactly one face with the Haar cascade."""
-    cascade = _cascade("haarcascade_frontalface_default.xml")
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    detections, _, weights = cascade.detectMultiScale3(
-        gray,
-        scaleFactor=HAAR_SCALE_FACTOR,
-        minNeighbors=HAAR_MIN_NEIGHBORS,
-        minSize=(MIN_FACE_PIXELS, MIN_FACE_PIXELS),
-        outputRejectLevels=True,
-    )
-    if len(detections) == 0:
+    """Find exactly one face, and its eyes, with YuNet."""
+    detector = _detector()
+    with _DETECTOR_LOCK:
+        detector.setInputSize((image.shape[1], image.shape[0]))
+        _, found = detector.detect(image)
+    faces = [] if found is None else [f for f in found if f[-1] >= FACE_DETECTOR_MIN_SCORE]
+    if not faces:
         raise ImageQualityError("No face was detected. Use a clear, front-facing, well-lit photo.")
-    if len(detections) > 1:
-        raise ImageQualityError(
-            f"{len(detections)} faces were detected. Submit a photo of one face."
-        )
+    if len(faces) > 1:
+        raise ImageQualityError(f"{len(faces)} faces were detected. Submit a photo of one face.")
 
-    x, y, width, height = (int(value) for value in detections[0])
-    score = float(weights[0]) if len(weights) else 0.0
-    return FaceBox(x, y, width, height, float(1.0 / (1.0 + np.exp(-score))))
+    face = faces[0]
+    x, y, width, height = (float(value) for value in face[:4])
+    # YuNet returns five landmarks; the first two are the eyes. Left and right are as seen.
+    left_eye, right_eye = sorted(
+        [(float(face[4]), float(face[5])), (float(face[6]), float(face[7]))]
+    )
+    return FaceBox(x, y, width, height, float(face[-1]), left_eye, right_eye)
 
 
 def align_and_crop(image: np.ndarray, box: FaceBox) -> np.ndarray:
     """Level the eyes and crop the face to the model's input size."""
-    angle = _eye_angle(image, box)
-    if angle is not None:
-        center = (box.x + box.width / 2.0, box.y + box.height / 2.0)
-        matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
-        image = cv2.warpAffine(
-            image, matrix, (image.shape[1], image.shape[0]), flags=cv2.INTER_LINEAR
-        )
+    (left_x, left_y), (right_x, right_y) = box.left_eye, box.right_eye
+    angle = float(np.degrees(np.arctan2(right_y - left_y, right_x - left_x)))
+    center = (box.x + box.width / 2.0, box.y + box.height / 2.0)
+    matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
+    image = cv2.warpAffine(image, matrix, (image.shape[1], image.shape[0]), flags=cv2.INTER_LINEAR)
 
     margin_x = int(box.width * FACE_CROP_MARGIN)
     margin_y = int(box.height * FACE_CROP_MARGIN)
-    left = max(box.x - margin_x, 0)
-    top = max(box.y - margin_y, 0)
-    right = min(box.x + box.width + margin_x, image.shape[1])
-    bottom = min(box.y + box.height + margin_y, image.shape[0])
+    left = max(int(box.x) - margin_x, 0)
+    top = max(int(box.y) - margin_y, 0)
+    right = min(int(box.x + box.width) + margin_x, image.shape[1])
+    bottom = min(int(box.y + box.height) + margin_y, image.shape[0])
 
     crop = image[top:bottom, left:right]
     return cv2.resize(crop, (FACE_CROP_SIZE, FACE_CROP_SIZE), interpolation=cv2.INTER_AREA)
@@ -122,27 +120,11 @@ def normalized_sharpness(gray: np.ndarray) -> float:
     return float(cv2.Laplacian(scaled, cv2.CV_64F).var())
 
 
-def _cascade(filename: str) -> cv2.CascadeClassifier:
-    cascade_dir = Path(str(cv2.data.haarcascades))  # type: ignore[attr-defined]
-    classifier = cv2.CascadeClassifier(str(cascade_dir / filename))
-    if classifier.empty():
-        raise ImageQualityError(f"OpenCV cascade {filename} could not be loaded.")
-    return classifier
+_DETECTOR_LOCK = threading.Lock()
 
 
-def _eye_angle(image: np.ndarray, box: FaceBox) -> float | None:
-    region = cv2.cvtColor(
-        image[box.y : box.y + box.height, box.x : box.x + box.width], cv2.COLOR_BGR2GRAY
-    )
-    eyes = _cascade("haarcascade_eye.xml").detectMultiScale(
-        region, HAAR_SCALE_FACTOR, HAAR_EYE_MIN_NEIGHBORS
-    )
-    if len(eyes) < 2:
-        return None
-
-    largest = sorted(eyes, key=lambda eye: eye[2] * eye[3], reverse=True)[:2]
-    centers = sorted(
-        ((int(x + w / 2), int(y + h / 2)) for x, y, w, h in largest), key=lambda point: point[0]
-    )
-    (left_x, left_y), (right_x, right_y) = centers
-    return float(np.degrees(np.arctan2(right_y - left_y, right_x - left_x)))
+@lru_cache(maxsize=1)
+def _detector() -> Any:
+    if not FACE_DETECTOR_PATH.exists():
+        raise ImageQualityError(f"Face detector model missing at {FACE_DETECTOR_PATH}.")
+    return cv2.FaceDetectorYN.create(str(FACE_DETECTOR_PATH), "", (320, 320))

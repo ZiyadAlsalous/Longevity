@@ -31,12 +31,11 @@ AGE_MODEL_REVISION: str = "53393526c220e34cdd7b722b36d22b6f9e5f4241"
 
 FACE_CROP_SIZE: int = 224
 FACE_CROP_MARGIN: float = 0.25
-MIN_FACE_PIXELS: int = 60
 MIN_MEAN_BRIGHTNESS: float = 30.0
 MAX_MEAN_BRIGHTNESS: float = 225.0
-HAAR_SCALE_FACTOR: float = 1.05
-HAAR_MIN_NEIGHBORS: int = 4
-HAAR_EYE_MIN_NEIGHBORS: int = 4
+# YuNet, OpenCV's neural face detector, bundled with the app. 0.9 is OpenCV's recommended score.
+FACE_DETECTOR_PATH: Path = PROJECT_ROOT / "src" / "models" / "face_detection_yunet_2023mar.onnx"
+FACE_DETECTOR_MIN_SCORE: float = 0.9
 DETECTION_PAD_FRACTION: float = 0.2
 # Blur threshold, measured after contrast is equalised so darker skin is not penalised.
 CONTRAST_NORMALIZED_STD: float = 50.0
