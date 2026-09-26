@@ -46,7 +46,8 @@ Write for an intelligent adult with no clinical training. At most {MAX_FACTORS} 
 and {MAX_RECOMMENDATIONS} recommendations, ordered by how well the evidence supports them.
 Be concise. The summary is two to four complete sentences. Put the apparent-age reading in
 apparent_age_note only, not as a factor. A LIFESTYLE line marked "not flagged" was answered
-and is not a concern; it is not missing data.
+and is not a concern; it is not missing data. Each insufficient_data entry is a full
+sentence, never an identifier such as a field name.
 """
 
 CONFIDENCE_ORDER = [Confidence.LOW, Confidence.MODERATE, Confidence.HIGH]
@@ -166,7 +167,7 @@ def correct_factor(
     context_names = {entry.canonical_name for entry in context}
     evidence: list[Evidence] = []
     for item in factor.evidence:
-        identifier = item.identifier.split("|")[-1].strip()
+        identifier = item.identifier.split("|")[-1].strip().lower()
         source = item.source
         if identifier in measured:
             source = EvidenceSource.BIOMARKER

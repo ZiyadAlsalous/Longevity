@@ -212,7 +212,9 @@ class AgingReport(StrictModel):
     insufficient_data: list[Annotated[str, Field(max_length=300)]] = Field(
         default_factory=list,
         max_length=10,
-        description="What could not be assessed. Preferred to a guess.",
+        description="Each entry is one full sentence naming something that could not be assessed "
+        "and why, for example 'Kidney function was not assessed because no creatinine result "
+        "was supplied.' Never an identifier or a single word.",
     )
     escalation: str | None = Field(default=None, description="Attached by code, not by the model.")
     disclaimer: str = Field(default="", description="Attached by code, not by the model.")
