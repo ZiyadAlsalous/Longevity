@@ -23,12 +23,13 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from src.schemas import AgingReport, BloodAnalyte, BloodPanel, PipelineState
+from src.schemas import AgingReport, BloodAnalyte, BloodPanel, PipelineState, RangeFlag
 from src.validation import (
     deviation_percent,
     display_name,
     load_biomarker_reference,
     out_of_range_analytes,
+    untested_biomarkers,
 )
 
 ACCENT = colors.HexColor("#1F4E79")
@@ -98,8 +99,7 @@ def _build_story(state: PipelineState) -> list[Flowable]:
         ]
 
     story += _biomarker_section(panel, styles)
-    story += _factor_section(report, styles)
-    story += _recommendation_section(report, styles)
+    story += _plan_section(report, styles)
 
     if report.insufficient_data:
         story += [
@@ -112,8 +112,8 @@ def _build_story(state: PipelineState) -> list[Flowable]:
             *[Paragraph(f"- {item}", styles["body"]) for item in report.insufficient_data],
         ]
 
-    story += [PageBreak(), Paragraph("Sources and limitations", styles["heading"])]
-    story += _sources_section(state, styles)
+    story += [PageBreak(), Paragraph("Limitations and run notes", styles["heading"])]
+    story += _limitations_section(state, styles)
     story += [Spacer(1, 12), _callout(report.disclaimer, styles["callout"], MUTED)]
     return story
 
@@ -121,78 +121,86 @@ def _build_story(state: PipelineState) -> list[Flowable]:
 def _biomarker_section(
     panel: BloodPanel | None, styles: dict[str, ParagraphStyle]
 ) -> list[Flowable]:
-    flagged = out_of_range_analytes(panel) if panel else []
-    if not flagged:
+    if panel is None:
         return []
 
-    section: list[Flowable] = [
-        Paragraph("Out-of-range biomarkers", styles["heading"]),
-        _biomarker_chart(flagged),
-        _biomarker_table(flagged, styles["cell"]),
-    ]
-    provenance: list[str] = []
-    if panel is not None and panel.lab_name:
-        provenance.append(f"Reported by {panel.lab_name}.")
-    if panel is not None and panel.collected_on:
-        provenance.append(f"Collected {panel.collected_on.isoformat()}.")
-    if provenance:
-        section.append(Paragraph(" ".join(provenance), styles["muted"]))
+    section: list[Flowable] = [Paragraph("Blood test results", styles["heading"])]
+    flagged = out_of_range_analytes(panel)
+    if flagged:
+        section.append(_biomarker_chart(flagged))
+    if panel.analytes:
+        section.append(_biomarker_table(panel.analytes, styles["cell"]))
+    else:
+        section.append(Paragraph("No results could be read from the lab report.", styles["body"]))
+
+    if panel.collected_on:
+        section.append(Paragraph(f"Collected {panel.collected_on.isoformat()}.", styles["muted"]))
+    flagged_names = [display_name(a) for a in flagged]
+    if flagged_names:
+        section.append(
+            Paragraph(
+                f"<b>Outside the laboratory's range:</b> {', '.join(flagged_names)}. "
+                "Share these results with your clinician.",
+                styles["body"],
+            )
+        )
+    if panel.lab_comments:
+        section += [
+            Spacer(1, 6),
+            Paragraph("The laboratory noted", styles["subheading"]),
+            *[Paragraph(f"- {comment}", styles["body"]) for comment in panel.lab_comments],
+        ]
+    untested = untested_biomarkers(panel)
+    if untested:
+        section += [
+            Spacer(1, 6),
+            Paragraph("Not included in this blood test", styles["subheading"]),
+            Paragraph(
+                ", ".join(entry.display_name for entry in untested)
+                + ". Ask your clinician whether any of these are worth testing.",
+                styles["body"],
+            ),
+        ]
     section.append(Spacer(1, 12))
     return section
 
 
-def _factor_section(report: AgingReport, styles: dict[str, ParagraphStyle]) -> list[Flowable]:
+def _plan_section(report: AgingReport, styles: dict[str, ParagraphStyle]) -> list[Flowable]:
     if not report.factors:
         return []
 
-    section: list[Flowable] = [Paragraph("Contributing factors", styles["heading"])]
+    section: list[Flowable] = [Paragraph("Your priorities", styles["heading"])]
     for index, factor in enumerate(report.factors, start=1):
-        section.append(
-            KeepTogether(
-                [
-                    Paragraph(
-                        f"{index}. {factor.title} ({factor.confidence.value} confidence)",
-                        styles["subheading"],
-                    ),
-                    Paragraph(factor.explanation, styles["body"]),
-                    Spacer(1, 8),
-                ]
-            )
-        )
-    return section
-
-
-def _recommendation_section(
-    report: AgingReport, styles: dict[str, ParagraphStyle]
-) -> list[Flowable]:
-    if not report.recommendations:
-        return []
-
-    section: list[Flowable] = [Paragraph("What to consider next", styles["heading"])]
-    for rec in report.ranked_recommendations():
-        section += [
-            Paragraph(f"{rec.priority}. {rec.action}", styles["body"]),
-            Paragraph(rec.rationale, styles["muted"]),
-            Spacer(1, 6),
+        block: list[Flowable] = [
+            Paragraph(
+                f"{index}. {factor.title} ({factor.confidence.value} confidence)",
+                styles["subheading"],
+            ),
+            Paragraph(factor.explanation, styles["body"]),
         ]
+        for rec in report.ranked_recommendations():
+            if rec.linked_factor != factor.title:
+                continue
+            block += [
+                Spacer(1, 3),
+                Paragraph(f"<b>First step:</b> {rec.action}", styles["body"]),
+                Paragraph(f"<b>Target:</b> {rec.target}", styles["body"]),
+                Paragraph(f"<b>How to track it:</b> {rec.how_to_track}", styles["body"]),
+                Paragraph(f"<b>Check again:</b> {rec.recheck}", styles["body"]),
+            ]
+        block.append(Spacer(1, 10))
+        section.append(KeepTogether(block))
     return section
 
 
-def _sources_section(state: PipelineState, styles: dict[str, ParagraphStyle]) -> list[Flowable]:
+def _limitations_section(state: PipelineState, styles: dict[str, ParagraphStyle]) -> list[Flowable]:
     items: list[Flowable] = [
-        Paragraph(f"{entry.display_name}: {entry.citation.strip()}", styles["body"])
-        for entry in state.get("knowledge_context", [])
-    ]
-    if not items:
-        items.append(Paragraph("No biomarker context was used in this run.", styles["body"]))
-
-    items += [
-        Spacer(1, 10),
         Paragraph("Known limitations", styles["subheading"]),
         Paragraph(
             "The perceived-age model is a pretrained estimator whose error grows with age "
             "and is not uniform across groups. Biomarker context is a curated summary of "
-            f"{len(load_biomarker_reference())} analytes, not a clinical reference. "
+            f"{len(load_biomarker_reference())} analytes, not a clinical reference. Results "
+            "outside that summary are judged only against the range the laboratory printed. "
             "Lifestyle answers are self-reported and unverified.",
             styles["body"],
         ),
@@ -251,6 +259,11 @@ def _biomarker_table(analytes: list[BloodAnalyte], cell: ParagraphStyle) -> Tabl
         ]
         for analyte in analytes
     ]
+    out_of_range = [
+        ("TEXTCOLOR", (0, row), (-1, row), WARNING)
+        for row, analyte in enumerate(analytes, start=1)
+        if analyte.flag in (RangeFlag.LOW, RangeFlag.HIGH)
+    ]
 
     table = Table(
         [["Biomarker", "Result", "Reference range", "Flag"], *rows],
@@ -268,6 +281,7 @@ def _biomarker_table(analytes: list[BloodAnalyte], cell: ParagraphStyle) -> Tabl
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("TOPPADDING", (0, 0), (-1, -1), 4),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                *out_of_range,
             ]
         )
     )

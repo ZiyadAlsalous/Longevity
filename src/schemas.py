@@ -5,7 +5,7 @@ from datetime import date
 from enum import Enum
 from typing import Annotated, Any, TypedDict
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
 from src.config import (
@@ -114,6 +114,11 @@ class BloodAnalyte(StrictModel):
 
 
 class BloodPanel(StrictModel):
+    contains_lab_results: bool = Field(
+        default=True,
+        description="False when the page is a receipt, invoice, cover page or has no test "
+        "results. Decide this first.",
+    )
     # Size limits stop a looping model: it cannot write past them.
     analytes: list[BloodAnalyte] = Field(default_factory=list, max_length=60)
     collected_on: date | None = Field(default=None, description="Specimen collection date.")
@@ -126,6 +131,18 @@ class BloodPanel(StrictModel):
         description="Result-looking lines that could not be transcribed confidently. "
         "Surfaced verbatim rather than guessed at.",
     )
+    lab_comments: list[Annotated[str, Field(max_length=300)]] = Field(
+        default_factory=list,
+        max_length=5,
+        description="Comments or recommendations the laboratory printed about the results, "
+        "copied verbatim.",
+    )
+
+    @field_validator("collected_on")
+    @classmethod
+    def drop_future_date(cls, value: date | None) -> date | None:
+        """A collection date in the future is a misread, so it is dropped."""
+        return value if value is None or value <= date.today() else None
 
 
 class BiomarkerReference(StrictModel):
@@ -176,10 +193,12 @@ class Confidence(str, Enum):
 
 class ContributingFactor(StrictModel):
     title: str = Field(
-        max_length=80, description="Short name, for example 'Elevated fasting glucose'."
+        max_length=80, description="Short name of the priority, for example 'Sleep'."
     )
     explanation: str = Field(
-        max_length=800, description="Plain-language, non-diagnostic explanation."
+        max_length=800,
+        description="Why this matters for this person's health and aging, connecting their "
+        "inputs. Do not just repeat the values they entered. Never diagnose.",
     )
     evidence: list[Evidence] = Field(
         min_length=1, max_length=5, description="At least one identifier from the evidence block."
@@ -189,11 +208,21 @@ class ContributingFactor(StrictModel):
 
 class Recommendation(StrictModel):
     priority: int = Field(ge=1, description="1 is highest priority.")
+    linked_factor: str = Field(max_length=80, description="Title of the factor this addresses.")
+    target: str = Field(
+        max_length=200, description="A measurable goal, for example '7.5 hours of sleep a night'."
+    )
     action: str = Field(
-        max_length=300, description="A behaviour. Never a drug, dose, or supplement regimen."
+        max_length=300,
+        description="One concrete first step to start this week, specific enough to begin "
+        "today, for example 'Set a fixed 7:00 wake-up time, weekends included'. A behaviour, or "
+        "speaking with a clinician. Never a drug, dose, or supplement regimen.",
+    )
+    how_to_track: str = Field(max_length=300, description="How the person will know it is working.")
+    recheck: str = Field(
+        max_length=200, description="When to check progress again, for example 'in 4 weeks'."
     )
     rationale: str = Field(max_length=500)
-    linked_factor: str = Field(max_length=80, description="Title of the factor this addresses.")
 
 
 class AgingReport(StrictModel):

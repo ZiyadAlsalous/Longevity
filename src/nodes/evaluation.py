@@ -17,10 +17,8 @@ def evaluation_node(state: PipelineState) -> dict[str, Any]:
     failures: list[str] = []
     if safety.unsafe_phrases:
         failures.append(f"Report contains dosing or diagnostic language: {safety.unsafe_phrases}.")
-    if extraction is not None and extraction.values_not_in_document:
-        failures.append(
-            f"Extracted lab values not found in the document: {extraction.values_not_in_document}."
-        )
+    # Values that could not be verified on the report are rejected before use, so they are
+    # recorded in the extraction check rather than failing the run.
     if grounding.factors_dropped_for_invented_biomarkers:
         failures.append(
             "The model cited biomarkers that were not supplied: "
@@ -40,17 +38,34 @@ def evaluation_node(state: PipelineState) -> dict[str, Any]:
 
 def find_unsafe_phrases(report: AgingReport) -> list[str]:
     """Find dose, medication or diagnosis language in the report."""
-    body = "\n".join(
-        [
-            report.summary,
-            report.apparent_age_note or "",
-            *(f"{factor.title}. {factor.explanation}" for factor in report.factors),
-            *(f"{rec.action} {rec.rationale}" for rec in report.recommendations),
-            *report.insufficient_data,
-        ]
-    )
+    body = _report_text(report)
     return [
         match.group(0)
         for pattern in UNSAFE_OUTPUT_PATTERNS
         for match in re.finditer(pattern, body, flags=re.IGNORECASE)
     ]
+
+
+def unsafe_sentences(report: AgingReport) -> list[str]:
+    """The sentences that contain dose, medication or diagnosis language."""
+    sentences = re.split(r"(?<=[.!?])\s+|\n", _report_text(report))
+    return [
+        sentence.strip()
+        for sentence in sentences
+        if any(re.search(p, sentence, flags=re.IGNORECASE) for p in UNSAFE_OUTPUT_PATTERNS)
+    ]
+
+
+def _report_text(report: AgingReport) -> str:
+    return "\n".join(
+        [
+            report.summary,
+            report.apparent_age_note or "",
+            *(f"{factor.title}. {factor.explanation}" for factor in report.factors),
+            *(
+                f"{rec.action} {rec.target} {rec.how_to_track} {rec.recheck} {rec.rationale}"
+                for rec in report.recommendations
+            ),
+            *report.insufficient_data,
+        ]
+    )

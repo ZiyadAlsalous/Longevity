@@ -55,7 +55,7 @@
 
 - canonical_name: total_cholesterol
   display_name: Total cholesterol
-  synonyms: [total cholesterol, cholesterol total, cholesterol, chol]
+  synonyms: [total cholesterol, cholesterol total, cholesterol, chol, serum total cholesterol]
   canonical_unit: mg/dL
   unit_conversions:
     mmol/l: 38.67
@@ -107,7 +107,7 @@
 
 - canonical_name: triglycerides
   display_name: Triglycerides
-  synonyms: [triglycerides, trig, tg, triglyceride]
+  synonyms: [triglycerides, trig, tg, triglyceride, serum triglycerides]
   canonical_unit: mg/dL
   unit_conversions:
     mmol/l: 88.57

@@ -23,7 +23,12 @@ from src.graph import run_pipeline
 from src.llm import LLMConfigError
 from src.nodes.report import render_report_pdf
 from src.schemas import DietPattern, PipelineState, Sex, SmokingStatus, SunExposure
-from src.validation import QuestionnaireError
+from src.validation import (
+    QuestionnaireError,
+    display_name,
+    out_of_range_analytes,
+    untested_biomarkers,
+)
 
 st.set_page_config(page_title="Longevity Insights", page_icon="🧬", layout="centered")
 
@@ -95,17 +100,51 @@ def render_report(state: PipelineState) -> None:
         st.subheader("Perceived age signal")
         st.write(report.apparent_age_note)
 
-    if report.factors:
-        st.subheader("Contributing factors")
-        for index, factor in enumerate(report.factors, start=1):
-            with st.expander(f"{index}. {factor.title}  ({factor.confidence.value} confidence)"):
-                st.write(factor.explanation)
+    panel = state.get("blood_panel")
+    if panel is not None:
+        st.subheader("Blood test results")
+        st.dataframe(
+            [
+                {
+                    "Test": display_name(a),
+                    "Result": f"{a.value} {a.unit}",
+                    "Range": f"{a.reference_range_low} to {a.reference_range_high}",
+                    "Flag": a.flag.value,
+                }
+                for a in panel.analytes
+            ],
+            hide_index=True,
+        )
+        flagged = [display_name(a) for a in out_of_range_analytes(panel)]
+        if flagged:
+            st.warning(
+                f"Outside the laboratory's range: {', '.join(flagged)}. "
+                "Share these results with your clinician."
+            )
+        for comment in panel.lab_comments:
+            st.caption(f"The laboratory noted: {comment}")
+        untested = untested_biomarkers(panel)
+        if untested:
+            st.caption(
+                "Not included in this blood test: "
+                + ", ".join(entry.display_name for entry in untested)
+                + ". Ask your clinician whether any are worth testing."
+            )
 
-    if report.recommendations:
-        st.subheader("What to consider next")
-        for rec in report.ranked_recommendations():
-            st.markdown(f"**{rec.priority}. {rec.action}**")
-            st.caption(rec.rationale)
+    if report.factors:
+        st.subheader("Your priorities")
+        for index, factor in enumerate(report.factors, start=1):
+            with st.expander(
+                f"{index}. {factor.title}  ({factor.confidence.value} confidence)", expanded=True
+            ):
+                st.write(factor.explanation)
+                for rec in report.ranked_recommendations():
+                    if rec.linked_factor == factor.title:
+                        st.markdown(
+                            f"**First step:** {rec.action}  \n**Target:** {rec.target}  \n"
+                            f"**How to track it:** {rec.how_to_track}  \n"
+                            f"**Check again:** {rec.recheck}"
+                        )
 
     if report.insufficient_data:
         st.subheader("Not assessed")

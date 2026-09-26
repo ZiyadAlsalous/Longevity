@@ -36,11 +36,7 @@ class OllamaLLM:
                 messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
                 format=_require_every_field(schema.model_json_schema()),
                 think=False,
-                options={
-                    "temperature": settings.llm_temperature,
-                    # Stops a looping model instead of letting it run to the timeout.
-                    "num_predict": settings.llm_max_tokens,
-                },
+                options=_options(),
             )
         except ConnectionError as exc:
             raise LLMConfigError(
@@ -58,6 +54,14 @@ class OllamaLLM:
                 "Run it again, or raise LLM_MAX_TOKENS in .env."
             )
         return schema.model_validate_json(response.message.content or "")
+
+
+def _options() -> dict[str, Any]:
+    # num_predict stops a looping model instead of letting it run to the timeout.
+    options: dict[str, Any] = {"num_predict": settings.llm_max_tokens}
+    if settings.llm_temperature is not None:
+        options["temperature"] = settings.llm_temperature
+    return options
 
 
 def _require_every_field(node: Any) -> Any:

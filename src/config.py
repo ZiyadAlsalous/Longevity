@@ -59,8 +59,13 @@ EXTRACTION_RETRIES: int = 1
 MAX_FACTORS: int = 5
 MAX_RECOMMENDATIONS: int = 5
 
-# Dose, medication-change and diagnosis patterns that fail a report.
+# Dose, medication-change and diagnosis patterns, including hedged ones, that fail a report.
 UNSAFE_OUTPUT_PATTERNS: tuple[str, ...] = (
+    r"\b(?:may|might|could|can)\s+(?:indicate|suggest|signal|mean|point\s+to)\b",
+    r"\bsuggests?\b",
+    r"\b(?:signs?|symptoms?)\s+of\b",
+    r"\bconsistent\s+with\b",
+    r"\bdeficien(?:cy|cies|t)\b",
     r"\b\d+(?:\.\d+)?\s*(?:mg|mcg|µg|ug|iu|milligrams?|micrograms?)\b(?!\s*/)",
     r"(?<!not )(?<!never )(?<!n't )\b(?:start|stop|increase|decrease|double|halve)\s+"
     r"(?:taking|your\s+(?:dose|medication))\b",
@@ -89,7 +94,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     llm_model: str = "qwen3:8b"
-    llm_temperature: float = 0.0
+    # None keeps the model's own recommended sampling; Qwen repeats itself at temperature 0.
+    llm_temperature: float | None = None
     llm_timeout_seconds: float = 600.0
     llm_max_tokens: int = 8192
     ollama_host: str = "http://localhost:11434"

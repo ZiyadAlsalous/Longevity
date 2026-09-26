@@ -138,33 +138,12 @@ def normalize_blood_panel(panel: BloodPanel) -> BloodPanel:
 
     for analyte in panel.analytes:
         canonical = canonical_analyte_name(analyte.reported_name)
-        if canonical is None:
-            normalized.append(analyte.model_copy(update={"canonical_name": UNMAPPED}))
-            continue
-
-        reference = references[canonical]
-        if canonical in seen:
-            unparsed.append(
-                f"{analyte.reported_name}: second reading of {reference.display_name}, "
-                "only the first is used."
-            )
-            normalized.append(analyte.model_copy(update={"canonical_name": UNMAPPED}))
-            continue
-
-        if analyte.value in (analyte.reference_range_low, analyte.reference_range_high):
-            unparsed.append(
-                f"{analyte.reported_name}: value {analyte.value} equals a printed range limit, "
-                "so it may be the range rather than the result; not compared."
-            )
-            normalized.append(analyte.model_copy(update={"canonical_name": UNMAPPED}))
-            continue
-
-        factor = canonical_unit_factor(analyte.unit, reference)
-        if factor is None:
-            unparsed.append(
-                f"{analyte.reported_name}: unrecognised unit '{analyte.unit}', not compared."
-            )
-            normalized.append(analyte.model_copy(update={"canonical_name": UNMAPPED}))
+        reference = references.get(canonical) if canonical else None
+        factor = canonical_unit_factor(analyte.unit, reference) if reference else None
+        if canonical is None or reference is None or factor is None or canonical in seen:
+            # Not in the knowledge base, a repeat, or an unknown unit: judged only against
+            # the range the laboratory printed, in the laboratory's own units.
+            normalized.append(_on_printed_range(analyte))
             continue
 
         seen.add(canonical)
@@ -184,6 +163,13 @@ def normalize_blood_panel(panel: BloodPanel) -> BloodPanel:
         )
 
     return panel.model_copy(update={"analytes": normalized, "unparsed_fields": unparsed})
+
+
+def _on_printed_range(analyte: BloodAnalyte) -> BloodAnalyte:
+    low, high = analyte.reference_range_low, analyte.reference_range_high
+    return analyte.model_copy(
+        update={"canonical_name": UNMAPPED, "flag": _flag_for(analyte.value, low, high)}
+    )
 
 
 def _effective_range(
@@ -269,3 +255,9 @@ def select_biomarker_context(
     if questionnaire.sun_exposure is SunExposure.MINIMAL:
         selected.add(LOW_SUN_BIOMARKER)
     return [reference for name, reference in references.items() if name in selected]
+
+
+def untested_biomarkers(panel: BloodPanel) -> list[BiomarkerReference]:
+    """Knowledge-base markers the lab report did not include."""
+    measured = {analyte.canonical_name for analyte in panel.analytes}
+    return [entry for name, entry in load_biomarker_reference().items() if name not in measured]

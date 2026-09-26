@@ -27,7 +27,7 @@ Everything runs on your own machine, including the language model, so no health 
 
 - **Apparent age from the photo alone.** The face model receives only the image. Your stated age and questionnaire answers are used afterwards, so they cannot influence the prediction.
 - **Honest uncertainty.** The age range widens with age, because the model's error does: ±5.3 years under 30, ±7.9 in the 30s, ±9.5 from 40, measured on 30,000 labelled faces. A gap inside that range is never called notable.
-- **Lab reports read, then verified in code.** PyMuPDF extracts text, Tesseract handles scanned pages, and a local Qwen3 model transcribes results into a typed schema. Canonical names, unit conversion and range flags are computed in Python against a curated knowledge base. A value that equals its own printed range limit is set aside as a likely misread.
+- **Lab reports read, then verified in code.** PyMuPDF extracts text, Tesseract handles scanned pages, and a local Qwen3 model transcribes results into a typed schema. Each page is read on its own, in row order. A value is used only if it is printed on the same line as its test name, and a range only if it is printed beside that value. Canonical names, unit conversion and flags are computed in Python against a curated knowledge base, or against the laboratory's own printed range for tests outside it.
 - **Critical values escalate automatically.** A threshold crossing produces a clinician warning the model cannot drop, and the model is told not to give lifestyle advice for that value.
 - **Grounding enforced, not requested.** Any factor citing a biomarker that was never extracted is deleted after generation and recorded as removed.
 - **Every run evaluates itself.** Extracted numbers must appear in the PDF, invented biomarkers are counted, and the report is screened for doses and diagnoses. Described under Architecture.
@@ -70,7 +70,7 @@ Face photo (optional)        Lab report PDF (optional)        Questionnaire (req
                           │
                           ▼
                        report
-               PDF: chart, table, evidence trail, citations
+               PDF: results, lab comments, untested markers, plan
 ```
 
 Photo and lab branches run in parallel and fan back in. Dependencies run one way:
@@ -85,7 +85,7 @@ There is no separate benchmark. Every call to `run_pipeline` returns `state["eva
 
 | | Check | Catches |
 |---|---|---|
-| 1 | Values in document | A lab value the model transcribed that does not appear as a number in the PDF. A likely hallucination. |
+| 1 | Values in document | A lab value that is not printed beside its test name. It is rejected before use and recorded. |
 | 2 | Extraction coverage | How many results mapped to known biomarkers, how many lines went unparsed, and whether OCR was needed. |
 | 3 | Invented biomarkers | Factors the model wrote about biomarkers that were never supplied. |
 | 4 | Unsafe language | Dose amounts, medication changes, or stated diagnoses in the report body. |

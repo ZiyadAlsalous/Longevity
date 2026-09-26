@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from src.config import DISCLAIMER, MAX_FACTORS, MAX_RECOMMENDATIONS, UNMAPPED
 from src.llm import build_llm
+from src.nodes.evaluation import unsafe_sentences
 from src.schemas import (
     AgingReport,
     BiomarkerReference,
@@ -19,9 +21,17 @@ from src.schemas import (
     PipelineState,
     Questionnaire,
 )
-from src.validation import display_name, load_biomarker_reference, summarize_lifestyle_flags
+from src.validation import (
+    display_name,
+    load_biomarker_reference,
+    summarize_lifestyle_flags,
+    untested_biomarkers,
+)
 
-SYNTHESIS_SYSTEM = f"""You write educational wellness summaries from pre-validated data.
+SYNTHESIS_SYSTEM = f"""You are a health coach writing a personal improvement plan from
+pre-validated data. Your job is to help the person improve their health and slow aging, not
+to restate what they entered. Explain why each priority matters for them, connecting their
+inputs, and give concrete next steps.
 
 Scope, which you never step outside:
 - You do not diagnose, name conditions a person may have, or interpret results clinically.
@@ -30,42 +40,77 @@ Scope, which you never step outside:
   not provide it and continue with lifestyle patterns only.
 - You recommend only behaviours: sleep, activity, diet, alcohol, sun protection, stress,
   and speaking with a clinician.
+- For an out-of-range lab result, recommend discussing it with a clinician. Never name a
+  condition it could mean.
 - Base every statement on the evidence lines, never on assumptions about a person's sex,
   ethnicity, or appearance.
 
 Grounding, which is enforced after you answer:
-- Every factor must cite at least one evidence identifier from the EVIDENCE block below.
-- Never name a biomarker that does not appear in that block, even to say it is normal.
+- Every factor cites at least one evidence identifier: the second field of an EVIDENCE line.
+- Never name a biomarker that does not appear in the block, even to say it is normal.
+- NOT_TESTED lists markers that were not measured. Never guess their values. You may suggest
+  asking a clinician about testing one when it is relevant to a priority.
 - If you cannot ground a topic, list it in insufficient_data instead of writing about it.
-- Confidence is low for a single questionnaire answer, moderate for one out-of-range
-  biomarker, and high only when several independent inputs agree.
-- A BIOMARKER line marked CRITICAL has already been escalated to a clinician. Never offer
-  lifestyle advice for that value; say only that it needs prompt clinical review.
+- Confidence is low for a single questionnaire answer, moderate for one kind of input, and
+  high only when independent inputs agree.
+- A line marked CRITICAL has already been escalated to a clinician. Never offer lifestyle
+  advice for that value; say only that it needs prompt clinical review.
 
-Write for an intelligent adult with no clinical training. At most {MAX_FACTORS} factors
-and {MAX_RECOMMENDATIONS} recommendations, ordered by how well the evidence supports them.
-Be concise. The summary is two to four complete sentences. Put the apparent-age reading in
-apparent_age_note only, not as a factor. A LIFESTYLE line marked "not flagged" was answered
-and is not a concern; it is not missing data. Each insufficient_data entry is a full
-sentence, never an identifier such as a field name.
+The plan:
+- Factors are the person's priorities, most impactful first, at most {MAX_FACTORS}. Favour
+  out-of-range results and flagged answers. When any lab result is out of range, one priority
+  is reviewing those results with a clinician. For a lab result, explain what the test
+  measures in plain words and that the laboratory flagged it, never what it could mean. An answer marked "not flagged" is healthy and is
+  not missing data; mention it only as something to keep doing.
+- Each recommendation belongs to one factor, named by its exact title in linked_factor, and
+  gives a first step for this week, a measurable target, how to track progress, and when to
+  recheck. At most {MAX_RECOMMENDATIONS}.
+- Be concise. The summary is two to four complete sentences about what to focus on. Put the
+  apparent-age reading in apparent_age_note only, not as a factor. Each insufficient_data
+  entry is a full sentence, never an identifier. NOT_TESTED markers are listed separately,
+  so do not repeat them in insufficient_data.
 """
 
+REWRITE = """
+
+These sentences in your previous answer used diagnostic or dosing language, which this tool
+never provides:
+{sentences}
+Write the plan again without them. For a lab result, say what the test measures in plain words
+and that the laboratory flagged it, never what it could mean."""
+
+MAX_REWRITES = 2
+
+LAB_COMMENT_ID = "lab_comment"
 CONFIDENCE_ORDER = [Confidence.LOW, Confidence.MODERATE, Confidence.HIGH]
 
 
 def synthesis_node(state: PipelineState) -> dict[str, Any]:
-    """Write the report from the evidence, then enforce grounding."""
+    """Write the plan from the evidence, then enforce grounding."""
     panel = state.get("blood_panel")
+    context = state.get("knowledge_context", [])
     prompt = build_evidence_prompt(
         questionnaire=state["questionnaire"],
         panel=panel,
         face_age=state.get("face_age"),
-        context=state.get("knowledge_context", []),
+        context=context,
         critical_findings=state.get("critical_findings", []),
         warnings=state.get("warnings", []),
     )
-    generated = build_llm().generate(system=SYNTHESIS_SYSTEM, user=prompt, schema=AgingReport)
-    grounded, dropped = enforce_grounding(generated, panel, state.get("knowledge_context", []))
+    llm = build_llm()
+    generated = llm.generate(system=SYNTHESIS_SYSTEM, user=prompt, schema=AgingReport)
+    for _ in range(MAX_REWRITES):
+        sentences = unsafe_sentences(generated)
+        if not sentences:
+            break
+        # Rewrite with the offending sentences pointed out; the evaluation records any left.
+        feedback = "\n".join(f"- {sentence}" for sentence in sentences)
+        generated = llm.generate(
+            system=SYNTHESIS_SYSTEM + REWRITE.format(sentences=feedback),
+            user=prompt,
+            schema=AgingReport,
+        )
+    grounded, dropped = enforce_grounding(generated, panel, context)
     report = grounded.model_copy(
         update={"disclaimer": DISCLAIMER, "escalation": state.get("escalation") or None}
     )
@@ -107,22 +152,28 @@ def build_evidence_prompt(
         lines.append(f"LIFESTYLE | {field} | {flagged.get(field, f'{answer}, not flagged')}")
 
     critical_names = {finding.canonical_name for finding in critical_findings}
-    for analyte in _mapped_analytes(panel):
+    for analyte in panel.analytes if panel else []:
         line = (
-            f"BIOMARKER | {analyte.canonical_name} | {display_name(analyte)} | "
+            f"BIOMARKER | {analyte_id(analyte)} | {display_name(analyte)} | "
             f"{analyte.value} {analyte.unit} | {analyte.flag.value} | reference "
-            f"{analyte.reference_range_low} to {analyte.reference_range_high} | "
-            f"printed as '{analyte.reported_name}'"
+            f"{analyte.reference_range_low} to {analyte.reference_range_high}"
         )
         if analyte.canonical_name in critical_names:
             line += " | CRITICAL: escalated to a clinician"
         lines.append(line)
 
     lines += [
-        f"CONTEXT | {entry.canonical_name} | {entry.aging_relevance.strip()} "
-        f"[source: {entry.citation.strip()}]"
-        for entry in context
+        f"LAB_COMMENT | {LAB_COMMENT_ID} | {comment}"
+        for comment in (panel.lab_comments if panel else [])
     ]
+    lines += [
+        f"CONTEXT | {entry.canonical_name} | {entry.aging_relevance.strip()}" for entry in context
+    ]
+    if panel is not None:
+        lines += [
+            f"NOT_TESTED | {entry.canonical_name} | {entry.display_name}"
+            for entry in untested_biomarkers(panel)
+        ]
     lines += [f"GAP | pipeline | {warning}" for warning in warnings]
 
     if questionnaire.medications:
@@ -136,18 +187,29 @@ def build_evidence_prompt(
 
     lines += [
         "",
-        "Write the report from these lines only. Anything absent here is unknown, and "
+        "Write the plan from these lines only. Anything absent here is unknown, and "
         "unknown belongs in insufficient_data.",
     ]
     return "\n".join(lines)
+
+
+def analyte_id(analyte: BloodAnalyte) -> str:
+    """The evidence identifier for a lab result: its canonical name, or its printed name."""
+    if analyte.canonical_name != UNMAPPED:
+        return analyte.canonical_name
+    return normalize_id(analyte.reported_name)
+
+
+def normalize_id(text: str) -> str:
+    """Lower-case snake_case, so 'LDL Cholesterol' and 'ldl_cholesterol' compare equal."""
+    return "_".join(re.findall(r"[a-z0-9]+", text.split("|")[-1].lower()))
 
 
 def invented_biomarkers(
     factor: ContributingFactor, panel: BloodPanel | None, context: list[BiomarkerReference]
 ) -> list[str]:
     """Biomarkers a factor cites that were never supplied, whatever source it claims."""
-    measured = {analyte.canonical_name for analyte in _mapped_analytes(panel)}
-    supplied = measured | {entry.canonical_name for entry in context}
+    supplied = _supplied_ids(panel, context)
     known = set(load_biomarker_reference())
     return sorted(
         {
@@ -163,15 +225,15 @@ def correct_factor(
     factor: ContributingFactor, panel: BloodPanel | None, context: list[BiomarkerReference]
 ) -> ContributingFactor:
     """Set each evidence source from its identifier, then cap confidence by the evidence."""
-    measured = {analyte.canonical_name for analyte in _mapped_analytes(panel)}
-    context_names = {entry.canonical_name for entry in context}
+    measured = {analyte_id(analyte) for analyte in panel.analytes} if panel else set()
+    reference_names = _supplied_ids(panel, context) - measured
     evidence: list[Evidence] = []
     for item in factor.evidence:
-        identifier = item.identifier.split("|")[-1].strip().lower()
+        identifier = normalize_id(item.identifier)
         source = item.source
         if identifier in measured:
             source = EvidenceSource.BIOMARKER
-        elif identifier in context_names:
+        elif identifier in reference_names:
             source = EvidenceSource.KNOWLEDGE_BASE
         elif identifier in Questionnaire.model_fields:
             source = EvidenceSource.QUESTIONNAIRE
@@ -213,18 +275,39 @@ def enforce_grounding(
             kept.append(factor)
 
     kept = kept[:MAX_FACTORS]
-    # A recommendation may link to a factor by title or by one of its evidence ids.
-    links = {factor.title for factor in kept}
-    links |= {evidence.identifier for factor in kept for evidence in factor.evidence}
-    recommendations = [rec for rec in report.recommendations if rec.linked_factor in links]
+    # Untested markers have their own section, so entries that only restate one are dropped.
+    untested = {e.display_name.lower() for e in untested_biomarkers(panel)} if panel else set()
+    gaps = [g for g in report.insufficient_data if not any(name in g.lower() for name in untested)]
+    # A recommendation may name its factor by title or by one of its evidence ids; either way
+    # it is relinked to the title, so the plan groups it under the right priority.
+    owner: dict[str, str] = {}
+    for factor in kept:
+        owner[normalize_id(factor.title)] = factor.title
+        for evidence in factor.evidence:
+            owner.setdefault(evidence.identifier, factor.title)
+    recommendations = [
+        rec.model_copy(update={"linked_factor": owner[normalize_id(rec.linked_factor)]})
+        for rec in report.recommendations
+        if normalize_id(rec.linked_factor) in owner
+    ]
     grounded = report.model_copy(
         update={
             "factors": kept,
             "recommendations": recommendations[:MAX_RECOMMENDATIONS],
-            "insufficient_data": [*report.insufficient_data, *notes],
+            "insufficient_data": [*gaps, *notes],
         }
     )
     return grounded, dropped
+
+
+def _supplied_ids(panel: BloodPanel | None, context: list[BiomarkerReference]) -> set[str]:
+    supplied = {entry.canonical_name for entry in context}
+    if panel is not None:
+        supplied |= {analyte_id(analyte) for analyte in panel.analytes}
+        if panel.lab_comments:
+            supplied.add(LAB_COMMENT_ID)
+        supplied |= {entry.canonical_name for entry in untested_biomarkers(panel)}
+    return supplied
 
 
 def _lifestyle_answers(questionnaire: Questionnaire) -> list[tuple[str, str]]:
@@ -236,9 +319,3 @@ def _lifestyle_answers(questionnaire: Questionnaire) -> list[tuple[str, str]]:
         ("perceived_stress", f"{questionnaire.perceived_stress} of 10"),
         ("sun_exposure", questionnaire.sun_exposure.value),
     ]
-
-
-def _mapped_analytes(panel: BloodPanel | None) -> list[BloodAnalyte]:
-    if panel is None:
-        return []
-    return [analyte for analyte in panel.analytes if analyte.canonical_name != UNMAPPED]
