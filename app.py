@@ -21,6 +21,7 @@ from src.config import (
 )
 from src.graph import run_pipeline
 from src.llm import LLMConfigError
+from src.nodes.bloodwork import merge_pdfs
 from src.nodes.report import render_report_pdf
 from src.schemas import DietPattern, PipelineState, Sex, SmokingStatus, SunExposure
 from src.validation import (
@@ -173,7 +174,9 @@ def main() -> None:
 
     questionnaire = collect_questionnaire()
     photo = st.file_uploader("Face photo (optional)", type=["jpg", "jpeg", "png"])
-    labs = st.file_uploader("Lab report PDF (optional)", type=["pdf"])
+    labs = st.file_uploader(
+        "Lab report PDFs from one visit (optional)", type=["pdf"], accept_multiple_files=True
+    )
 
     if st.button("Run pipeline", type="primary"):
         lock = _run_lock()
@@ -191,12 +194,18 @@ def main() -> None:
         render_report(st.session_state[RESULT_KEY])
 
 
-def _run(questionnaire: dict[str, Any], photo: Any, labs: Any) -> None:
+def _run(questionnaire: dict[str, Any], photo: Any, labs: list[Any]) -> None:
     with tempfile.TemporaryDirectory() as workspace:
-        paths = {
-            "image_path": _save_upload(photo, Path(workspace)),
-            "lab_pdf_path": _save_upload(labs, Path(workspace)),
-        }
+        folder = Path(workspace)
+        reports = [_save_upload(upload, folder, prefix=f"{i}_") for i, upload in enumerate(labs)]
+        try:
+            lab_pdf = (
+                merge_pdfs([p for p in reports if p], folder / "lab_reports.pdf") if labs else None
+            )
+        except RuntimeError as exc:
+            st.error(f"A lab report could not be opened: {exc}")
+            return
+        paths = {"image_path": _save_upload(photo, folder), "lab_pdf_path": lab_pdf}
         with st.spinner("Running the pipeline..."):
             try:
                 st.session_state[RESULT_KEY] = run_pipeline(questionnaire=questionnaire, **paths)
@@ -209,10 +218,10 @@ def _split_comma_list(text: str) -> list[str]:
     return [item.strip() for item in text.split(",") if item.strip()]
 
 
-def _save_upload(upload: Any, workspace: Path) -> Path | None:
+def _save_upload(upload: Any, workspace: Path, prefix: str = "") -> Path | None:
     if upload is None:
         return None
-    path = workspace / Path(str(upload.name)).name
+    path = workspace / f"{prefix}{Path(str(upload.name)).name}"
     path.write_bytes(upload.getbuffer())
     return path
 

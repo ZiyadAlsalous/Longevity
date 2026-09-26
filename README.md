@@ -172,12 +172,12 @@ TORCH_DEVICE=auto                   # cuda, mps, or cpu
 streamlit run app.py
 ```
 
-Open **http://localhost:8501**. Answer the questions, add a face photo and a lab report PDF if you have them, and press **Run pipeline**. The first photo downloads the 110 MB MiVOLO weights once.
+Open **http://localhost:8501**. Answer the questions, add a face photo and your lab report PDFs if you have them, and press **Run pipeline**. A visit split across several PDFs can be uploaded together; they are read as one report, in upload order. The first photo downloads the 110 MB MiVOLO weights once.
 
 **Command line**
 
 ```bash
-python -m src.graph --intake intake.json --image face.jpg --labs labs.pdf --out report.pdf
+python -m src.graph --intake intake.json --image face.jpg --labs cbc.pdf lipids.pdf --out report.pdf
 ```
 
 `intake.json` holds the ten answers. The command prints the summary, any warnings, and whether the quality checks passed.

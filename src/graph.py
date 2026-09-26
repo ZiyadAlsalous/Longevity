@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Final, Literal, cast
 
@@ -10,7 +11,7 @@ from langgraph.graph import END, START, StateGraph
 
 from src.config import settings
 from src.llm import LLMConfigError
-from src.nodes.bloodwork import bloodwork_node
+from src.nodes.bloodwork import bloodwork_node, merge_pdfs
 from src.nodes.evaluation import evaluation_node
 from src.nodes.face_age import compare_with_stated_age, face_age_node
 from src.nodes.report import report_node
@@ -132,7 +133,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the Longevity Insights pipeline.")
     parser.add_argument("--intake", required=True, type=Path, help="JSON file of intake answers.")
     parser.add_argument("--image", type=Path, default=None, help="Optional face photo.")
-    parser.add_argument("--labs", type=Path, default=None, help="Optional lab report PDF.")
+    parser.add_argument(
+        "--labs",
+        type=Path,
+        nargs="+",
+        default=None,
+        help="Optional lab report PDFs from one visit.",
+    )
     parser.add_argument(
         "--out", type=Path, default=settings.default_report_path, help="PDF output path."
     )
@@ -145,14 +152,19 @@ def main() -> None:
         raise SystemExit(2) from None
 
     try:
-        state = run_pipeline(
-            questionnaire=questionnaire,
-            image_path=args.image,
-            lab_pdf_path=args.labs,
-            report_path=args.out,
-        )
+        with tempfile.TemporaryDirectory() as workspace:
+            labs = merge_pdfs(args.labs, Path(workspace) / "lab_reports.pdf") if args.labs else None
+            state = run_pipeline(
+                questionnaire=questionnaire,
+                image_path=args.image,
+                lab_pdf_path=labs,
+                report_path=args.out,
+            )
     except (QuestionnaireError, LLMConfigError) as exc:
         print(str(exc), file=sys.stderr)
+        raise SystemExit(2) from None
+    except RuntimeError as exc:
+        print(f"A lab report could not be opened: {exc}", file=sys.stderr)
         raise SystemExit(2) from None
 
     for warning in state.get("warnings", []):

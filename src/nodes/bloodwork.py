@@ -58,6 +58,18 @@ class PdfText(NamedTuple):
     unreadable_pages: int
 
 
+def merge_pdfs(paths: list[Path], target: Path) -> Path:
+    """Combine a visit's lab reports into one PDF, in the given order."""
+    if len(paths) == 1:
+        return paths[0]
+    with pymupdf.open() as merged:
+        for path in paths:
+            with pymupdf.open(path) as part:
+                merged.insert_pdf(part)
+        merged.save(target)
+    return target
+
+
 def extract_pdf_text(path: Path) -> PdfText:
     """Extract text from the lab PDF, using OCR for scanned pages."""
     if not path.exists():
