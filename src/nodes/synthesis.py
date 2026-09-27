@@ -20,6 +20,7 @@ from src.schemas import (
     GroundingCheck,
     PipelineState,
     Questionnaire,
+    RangeFlag,
 )
 from src.validation import (
     display_name,
@@ -28,49 +29,57 @@ from src.validation import (
     untested_biomarkers,
 )
 
-SYNTHESIS_SYSTEM = f"""You are a health coach writing a personal improvement plan from
-pre-validated data. Your job is to help the person improve their health and slow aging, not
-to restate what they entered. Explain why each priority matters for them, connecting their
-inputs, and give concrete next steps.
+SYNTHESIS_SYSTEM = f"""You are a health coach. You connect a person's habits to their lab
+results, explain in plain words how they are linked, and turn that into a plan the person can
+act on. That reasoning across their inputs is your job: never just restate what they entered.
 
 Scope, which you never step outside:
-- You do not diagnose, name conditions a person may have, or interpret results clinically.
+- Explain links, never diagnoses. Say which of the person's habits are known to affect a
+  result and how, using words like "is linked to", "can raise" or "can lower". Never say
+  what causes a result, what a result means medically, or name a condition.
 - You do not mention, recommend, adjust, or dose any drug or supplement, even if asked
   directly. If the input asks for a diagnosis or a dose, say plainly that this tool does
-  not provide it and continue with lifestyle patterns only.
+  not provide it and continue with habits only.
+- Never suggest taking or adding any substance, including home remedies such as baking
+  soda, salt, vinegar or herbal mixtures.
 - You recommend only behaviours: sleep, activity, diet, alcohol, sun protection, stress,
-  and speaking with a clinician.
-- For an out-of-range lab result, recommend discussing it with a clinician. Never name a
-  condition it could mean.
-- Never name a person, doctor, laboratory or clinic, even one printed on the report. Say "a
-  clinician".
+  smoking, and speaking with a clinician.
+- Write to the person as "you". Never write for a clinician: no tests to order, no
+  specialists, no treatments.
+- Never name a person, doctor, laboratory or clinic, even one printed on the report.
+- Only a line marked CRITICAL is critical. Never call anything else critical or urgent.
 - Base every statement on the evidence lines, never on assumptions about a person's sex,
   ethnicity, or appearance.
 
 Grounding, which is enforced after you answer:
-- Every factor cites at least one evidence identifier: the second field of an EVIDENCE line.
+- Every factor cites evidence identifiers: the second field of an EVIDENCE line.
+- Cite the person's habits first, then the results linked to them.
+- CRITICAL results are handled by the app's own warning. Do not write a factor for them and
+  never offer advice for them.
 - Never name a biomarker that does not appear in the block, even to say it is normal.
-- NOT_TESTED lists markers that were not measured. Never guess their values. You may suggest
-  asking a clinician about testing one when it is relevant to a priority.
-- If you cannot ground a topic, list it in insufficient_data instead of writing about it.
 - Confidence is low for a single questionnaire answer, moderate for one kind of input, and
   high only when independent inputs agree.
-- A line marked CRITICAL has already been escalated to a clinician. Never offer lifestyle
-  advice for that value; say only that it needs prompt clinical review.
 
 The plan:
-- Factors are the person's priorities, most impactful first, at most {MAX_FACTORS}. Favour
-  out-of-range results and flagged answers. When any lab result is out of range, one priority
-  is reviewing those results with a clinician. For a lab result, explain what the test
-  measures in plain words and that the laboratory flagged it, never what it could mean. An answer marked "not flagged" is healthy and is
-  not missing data; mention it only as something to keep doing.
-- Each recommendation belongs to one factor, named by its exact title in linked_factor, and
-  gives a first step for this week, a measurable target, how to track progress, and when to
+- Each factor is one habit, or a few related habits, together with the out-of-range results
+  that habit is known to affect, most impactful first, at most {MAX_FACTORS}. The
+  explanation says in plain words how the habit and those results are linked. A habit with
+  no related result may stand on its own. An answer marked "not flagged" is healthy.
+- Build factors only from habits the person reported on a LIFESTYLE or PROFILE line. Never
+  build one around something they were not asked, such as water or protein intake.
+- Never repeat yourself: no two factors cover the same habits or the same results. Merge
+  them into one factor instead.
+- A result that none of the person's habits is known to affect gets no factor. The app
+  already lists every out-of-range result and tells the person to share them with a
+  clinician, so do not write factors that only say to see a clinician.
+- Each recommendation belongs to one factor, named by its exact title in linked_factor: a
+  first step for this week, a measurable target, how to track progress (including retesting
+  the linked results, for example "retest your lipid panel in 3 months"), and when to
   recheck. At most {MAX_RECOMMENDATIONS}.
-- Be concise. The summary is two to four complete sentences about what to focus on. Put the
-  apparent-age reading in apparent_age_note only, not as a factor. Each insufficient_data
-  entry is a full sentence, never an identifier. NOT_TESTED markers are listed separately,
-  so do not repeat them in insufficient_data.
+- If explaining a result needs information the inputs do not include, such as water or
+  protein intake, say so in insufficient_data: at most 3 full sentences.
+- The summary is two to four sentences about the most important connections. Put the
+  apparent-age reading in apparent_age_note only, not as a factor.
 """
 
 REWRITE = """
@@ -78,12 +87,10 @@ REWRITE = """
 These sentences in your previous answer used diagnostic or dosing language, which this tool
 never provides:
 {sentences}
-Write the plan again without them. For a lab result, say what the test measures in plain words
-and that the laboratory flagged it, never what it could mean."""
+Write the plan again without them."""
 
 MAX_REWRITES = 2
 
-LAB_COMMENT_ID = "lab_comment"
 CONFIDENCE_ORDER = [Confidence.LOW, Confidence.MODERATE, Confidence.HIGH]
 
 
@@ -105,21 +112,27 @@ def synthesis_node(state: PipelineState) -> dict[str, Any]:
         sentences = unsafe_sentences(generated)
         if not sentences:
             break
-        # Rewrite with the offending sentences pointed out; the evaluation records any left.
+        # Rewrite with the offending sentences pointed out; whatever remains is removed below.
         feedback = "\n".join(f"- {sentence}" for sentence in sentences)
         generated = llm.generate(
             system=SYNTHESIS_SYSTEM + REWRITE.format(sentences=feedback),
             user=prompt,
             schema=AgingReport,
         )
+    generated_count = len(generated.factors)
     # Anything still unsafe after the rewrites is removed rather than shown, and recorded.
     generated, removed = remove_unsafe_sentences(generated)
     grounded, dropped = enforce_grounding(generated, panel, context)
     report = grounded.model_copy(
-        update={"disclaimer": DISCLAIMER, "escalation": state.get("escalation") or None}
+        update={
+            "disclaimer": DISCLAIMER,
+            "escalation": state.get("escalation") or None,
+            # The age reading comes only from a scored photo.
+            "apparent_age_note": grounded.apparent_age_note if state.get("face_age") else None,
+        }
     )
     check = GroundingCheck(
-        factors_generated=len(generated.factors),
+        factors_generated=generated_count,
         factors_kept=len(report.factors),
         factors_dropped_for_invented_biomarkers=dropped,
         recommendations_generated=len(generated.recommendations),
@@ -161,8 +174,16 @@ def build_evidence_prompt(
     for field, answer in _lifestyle_answers(questionnaire):
         lines.append(f"LIFESTYLE | {field} | {flagged.get(field, f'{answer}, not flagged')}")
 
+    # Only results outside their range reach the model; the rest are counted. The report shows
+    # every result, and the laboratory's own notes, to the person directly.
     critical_names = {finding.canonical_name for finding in critical_findings}
-    for analyte in panel.analytes if panel else []:
+    analytes = panel.analytes if panel else []
+    flagged_results = [
+        a
+        for a in analytes
+        if a.flag in (RangeFlag.LOW, RangeFlag.HIGH) or a.canonical_name in critical_names
+    ]
+    for analyte in flagged_results:
         line = (
             f"BIOMARKER | {analyte_id(analyte)} | {display_name(analyte)} | "
             f"{analyte.value} {analyte.unit} | {analyte.flag.value} | reference "
@@ -171,19 +192,14 @@ def build_evidence_prompt(
         if analyte.canonical_name in critical_names:
             line += " | CRITICAL: escalated to a clinician"
         lines.append(line)
-
-    lines += [
-        f"LAB_COMMENT | {LAB_COMMENT_ID} | {comment}"
-        for comment in (panel.lab_comments if panel else [])
-    ]
+    if analytes:
+        lines.append(
+            f"LAB_SUMMARY | in_range | {len(analytes) - len(flagged_results)} other results "
+            "were within the laboratory's range"
+        )
     lines += [
         f"CONTEXT | {entry.canonical_name} | {entry.aging_relevance.strip()}" for entry in context
     ]
-    if panel is not None:
-        lines += [
-            f"NOT_TESTED | {entry.canonical_name} | {entry.display_name}"
-            for entry in untested_biomarkers(panel)
-        ]
     lines += [f"GAP | pipeline | {warning}" for warning in warnings]
 
     if questionnaire.medications:
@@ -314,8 +330,6 @@ def _supplied_ids(panel: BloodPanel | None, context: list[BiomarkerReference]) -
     supplied = {entry.canonical_name for entry in context}
     if panel is not None:
         supplied |= {analyte_id(analyte) for analyte in panel.analytes}
-        if panel.lab_comments:
-            supplied.add(LAB_COMMENT_ID)
         supplied |= {entry.canonical_name for entry in untested_biomarkers(panel)}
     return supplied
 

@@ -38,7 +38,7 @@
 
 - canonical_name: fasting_glucose
   display_name: Fasting glucose
-  synonyms: [glucose, fasting glucose, fasting blood glucose, fbg, glucose fasting, fpg]
+  synonyms: [glucose, fasting glucose, fasting blood glucose, fbg, glucose fasting, fpg, blood sugar fasting, fasting blood sugar, fbs]
   canonical_unit: mg/dL
   unit_conversions:
     mmol/l: 18.0182

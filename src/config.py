@@ -19,7 +19,7 @@ MAX_EXERCISE_MINUTES_PER_WEEK: int = 1000
 STRESS_SCALE_MIN: int = 1
 STRESS_SCALE_MAX: int = 10
 
-LOW_SLEEP_HOURS: float = 6.0
+LOW_SLEEP_HOURS: float = 7.0  # adults need 7+ hours (AASM and CDC)
 HIGH_SLEEP_HOURS: float = 9.5
 WEEKLY_EXERCISE_TARGET_MINUTES: int = 150
 HEAVY_DRINKING_UNITS_PER_WEEK: float = 14.0
@@ -36,6 +36,7 @@ MAX_MEAN_BRIGHTNESS: float = 225.0
 # YuNet, OpenCV's neural face detector, bundled with the app. 0.9 is OpenCV's recommended score.
 FACE_DETECTOR_PATH: Path = PROJECT_ROOT / "src" / "models" / "face_detection_yunet_2023mar.onnx"
 FACE_DETECTOR_MIN_SCORE: float = 0.9
+DETECTION_MAX_SIDE: int = 640  # YuNet misses faces in full-size phone photos
 DETECTION_PAD_FRACTION: float = 0.2
 # Blur threshold, measured after contrast is equalised so darker skin is not penalised.
 CONTRAST_NORMALIZED_STD: float = 50.0
@@ -61,7 +62,11 @@ MAX_RECOMMENDATIONS: int = 5
 # Dose, medication-change and diagnosis patterns, including hedged ones, that fail a report.
 UNSAFE_OUTPUT_PATTERNS: tuple[str, ...] = (
     r"\b(?:may|might|could|can)\s+(?:indicate|suggest|signal|mean|point\s+to)\b",
-    r"\bsuggests?\b",
+    r"\bsuggest(?:s|ed|ing|ive)?\b",
+    r"\bindicat(?:ive|ing)\b",
+    r"\bmay\s+be\s+(?:due\s+to|caused\s+by)\b",
+    r"\b(?:disease|disorder|dysfunction|syndrome|pathology)s?\b",
+    r"\b\w+ologists?\b",
     r"\b(?:signs?|symptoms?)\s+of\b",
     r"\bconsistent\s+with\b",
     r"\bdeficien(?:cy|cies|t)\b",
@@ -98,6 +103,7 @@ class Settings(BaseSettings):
     llm_temperature: float | None = None
     llm_timeout_seconds: float = 600.0
     llm_max_tokens: int = 8192
+    llm_context_tokens: int = 16384  # prompt plus answer; Ollama defaults to 4096
     ollama_host: str = "http://localhost:11434"
     tesseract_cmd: str | None = None
     default_report_path: Path = PROJECT_ROOT / "report.pdf"

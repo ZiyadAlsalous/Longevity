@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from functools import lru_cache
 
@@ -96,7 +97,14 @@ def load_biomarker_reference() -> dict[str, BiomarkerReference]:
 
 
 def canonical_analyte_name(reported_name: str) -> str | None:
-    return _synonym_index().get(_normalize_label(reported_name))
+    """Match the printed name, then the name outside brackets, then each bracketed name."""
+    index = _synonym_index()
+    outside = re.sub(r"\([^)]*\)", " ", reported_name)
+    for candidate in (reported_name, outside, *re.findall(r"\(([^)]*)\)", reported_name)):
+        label = _normalize_label(candidate)
+        if label in index:
+            return index[label]
+    return None
 
 
 def display_name(analyte: BloodAnalyte) -> str:
@@ -114,8 +122,8 @@ def _synonym_index() -> dict[str, str]:
 
 
 def _normalize_label(label: str) -> str:
-    cleaned = "".join(char if char.isalnum() else " " for char in label.lower())
-    return " ".join(cleaned.split())
+    # Letters and digits only, so "Vitamin B-12" and "vitamin b12" match.
+    return "".join(char for char in label.lower() if char.isalnum())
 
 
 def canonical_unit_factor(unit: str, reference: BiomarkerReference) -> float | None:

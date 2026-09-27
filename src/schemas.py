@@ -193,15 +193,18 @@ class Confidence(str, Enum):
 
 class ContributingFactor(StrictModel):
     title: str = Field(
-        max_length=80, description="Short name of the priority, for example 'Sleep'."
+        max_length=80, description="Short name of the priority, for example 'Sleep and stress'."
     )
     explanation: str = Field(
         max_length=800,
-        description="Why this matters for this person's health and aging, connecting their "
-        "inputs. Do not just repeat the values they entered. Never diagnose.",
+        description="How these habits and results are linked, in plain words, for this person. "
+        "Do not just repeat the values they entered. Never diagnose.",
     )
     evidence: list[Evidence] = Field(
-        min_length=1, max_length=5, description="At least one identifier from the evidence block."
+        min_length=1,
+        max_length=8,
+        description="Identifiers from the evidence block: the person's habits first, then the "
+        "results linked to them.",
     )
     confidence: Confidence
 

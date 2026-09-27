@@ -82,6 +82,9 @@ def remove_unsafe_sentences(report: AgingReport) -> tuple[AgingReport, list[str]
         for f in report.factors
         if f.title not in unsafe_titles
     ]
+    # A factor left with no explanation says nothing, so it goes too, with its steps.
+    unsafe_titles |= {f.title for f in factors if not f.explanation}
+    factors = [f for f in factors if f.explanation]
     recommendations = []
     for rec in report.recommendations:
         if rec.linked_factor in unsafe_titles:

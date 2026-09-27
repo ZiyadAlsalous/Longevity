@@ -23,7 +23,14 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from src.schemas import AgingReport, BloodAnalyte, BloodPanel, PipelineState, RangeFlag
+from src.schemas import (
+    AgingReport,
+    BloodAnalyte,
+    BloodPanel,
+    PipelineState,
+    RangeFlag,
+    Recommendation,
+)
 from src.validation import (
     deviation_percent,
     display_name,
@@ -124,7 +131,7 @@ def _biomarker_section(
     if panel is None:
         return []
 
-    section: list[Flowable] = [Paragraph("Blood test results", styles["heading"])]
+    section: list[Flowable] = [Paragraph("Lab results", styles["heading"])]
     flagged = out_of_range_analytes(panel)
     if flagged:
         section.append(_biomarker_chart(flagged))
@@ -154,7 +161,7 @@ def _biomarker_section(
     if untested:
         section += [
             Spacer(1, 6),
-            Paragraph("Not included in this blood test", styles["subheading"]),
+            Paragraph("Not included in this lab report", styles["subheading"]),
             Paragraph(
                 ", ".join(entry.display_name for entry in untested)
                 + ". Ask your clinician whether any of these are worth testing.",
@@ -181,16 +188,23 @@ def _plan_section(report: AgingReport, styles: dict[str, ParagraphStyle]) -> lis
         for rec in report.ranked_recommendations():
             if rec.linked_factor != factor.title:
                 continue
-            block += [
-                Spacer(1, 3),
-                Paragraph(f"<b>First step:</b> {rec.action}", styles["body"]),
-                Paragraph(f"<b>Target:</b> {rec.target}", styles["body"]),
-                Paragraph(f"<b>How to track it:</b> {rec.how_to_track}", styles["body"]),
-                Paragraph(f"<b>Check again:</b> {rec.recheck}", styles["body"]),
-            ]
+            block.append(Spacer(1, 3))
+            for label, text in plan_lines(rec):
+                block.append(Paragraph(f"<b>{label}:</b> {text}", styles["body"]))
         block.append(Spacer(1, 10))
         section.append(KeepTogether(block))
     return section
+
+
+def plan_lines(rec: Recommendation) -> list[tuple[str, str]]:
+    """The labelled lines of one step, leaving out any that are empty."""
+    lines = [
+        ("First step", rec.action),
+        ("Target", rec.target),
+        ("How to track it", rec.how_to_track),
+        ("Check again", rec.recheck),
+    ]
+    return [(label, text) for label, text in lines if text.strip()]
 
 
 def _limitations_section(state: PipelineState, styles: dict[str, ParagraphStyle]) -> list[Flowable]:

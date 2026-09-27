@@ -15,7 +15,7 @@
 
 ## Overview
 
-Upload a photo of your face and a lab report PDF, and answer ten questions about sleep, activity, alcohol, stress, diet and sun. The app returns a wellness report as a PDF: how old your face looks compared with your stated age, which blood markers sit outside their range, which lifestyle patterns stand out, and what to consider doing next.
+Upload a photo of your face and a lab report PDF, and answer ten questions about sleep, activity, alcohol, stress, diet and sun. The app returns a wellness report as a PDF: how old your face looks compared with your stated age, which blood markers sit outside their range, which of your habits are linked to them, and a plan with targets and when to retest.
 
 The hard part is not writing the report. It is **stopping a language model from saying things the inputs do not support**. A model asked about blood work will happily name conditions, suggest supplements, or discuss a biomarker nobody measured.
 
@@ -61,7 +61,8 @@ Face photo (optional)        Lab report PDF (optional)        Questionnaire (req
                           │              clinician escalation text
                           ▼                         │
                       synthesis ◀───────────────────┘
-               Qwen3 writes from a pipe-delimited evidence block
+               Qwen3 links habits to out-of-range results
+               unsafe sentences rewritten, then removed
                factors citing absent biomarkers are deleted
                           │
                           ▼
@@ -163,6 +164,7 @@ No key is needed. The defaults work as they are:
 ```ini
 LLM_MODEL=qwen3:8b                  # any Ollama model that supports structured output
 OLLAMA_HOST=http://localhost:11434
+LLM_CONTEXT_TOKENS=16384            # prompt plus answer; lower it on a small machine
 TORCH_DEVICE=auto                   # cuda, mps, or cpu
 ```
 

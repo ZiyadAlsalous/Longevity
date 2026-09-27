@@ -10,6 +10,7 @@ import numpy as np
 
 from src.config import (
     CONTRAST_NORMALIZED_STD,
+    DETECTION_MAX_SIDE,
     DETECTION_PAD_FRACTION,
     FACE_CROP_MARGIN,
     FACE_CROP_SIZE,
@@ -58,23 +59,26 @@ def pad_for_detection(image: np.ndarray) -> np.ndarray:
 
 def detect_face(image: np.ndarray) -> FaceBox:
     """Find exactly one face, and its eyes, with YuNet."""
+    # Detect on a copy at most DETECTION_MAX_SIDE wide, then scale back to the full photo.
+    scale = min(1.0, DETECTION_MAX_SIDE / max(image.shape[:2]))
+    small = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
     detector = _detector()
     with _DETECTOR_LOCK:
-        detector.setInputSize((image.shape[1], image.shape[0]))
-        _, found = detector.detect(image)
+        detector.setInputSize((small.shape[1], small.shape[0]))
+        _, found = detector.detect(small)
     faces = [] if found is None else [f for f in found if f[-1] >= FACE_DETECTOR_MIN_SCORE]
     if not faces:
         raise ImageQualityError("No face was detected. Use a clear, front-facing, well-lit photo.")
     if len(faces) > 1:
         raise ImageQualityError(f"{len(faces)} faces were detected. Submit a photo of one face.")
 
-    face = faces[0]
+    face = faces[0][:-1] / scale
     x, y, width, height = (float(value) for value in face[:4])
     # YuNet returns five landmarks; the first two are the eyes. Left and right are as seen.
     left_eye, right_eye = sorted(
         [(float(face[4]), float(face[5])), (float(face[6]), float(face[7]))]
     )
-    return FaceBox(x, y, width, height, float(face[-1]), left_eye, right_eye)
+    return FaceBox(x, y, width, height, float(faces[0][-1]), left_eye, right_eye)
 
 
 def align_and_crop(image: np.ndarray, box: FaceBox) -> np.ndarray:

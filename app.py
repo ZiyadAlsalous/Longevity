@@ -22,7 +22,7 @@ from src.config import (
 from src.graph import run_pipeline
 from src.llm import LLMConfigError
 from src.nodes.bloodwork import merge_pdfs
-from src.nodes.report import render_report_pdf
+from src.nodes.report import plan_lines, render_report_pdf
 from src.schemas import DietPattern, PipelineState, Sex, SmokingStatus, SunExposure
 from src.validation import (
     QuestionnaireError,
@@ -103,7 +103,7 @@ def render_report(state: PipelineState) -> None:
 
     panel = state.get("blood_panel")
     if panel is not None:
-        st.subheader("Blood test results")
+        st.subheader("Lab results")
         st.dataframe(
             [
                 {
@@ -127,7 +127,7 @@ def render_report(state: PipelineState) -> None:
         untested = untested_biomarkers(panel)
         if untested:
             st.caption(
-                "Not included in this blood test: "
+                "Not included in this lab report: "
                 + ", ".join(entry.display_name for entry in untested)
                 + ". Ask your clinician whether any are worth testing."
             )
@@ -142,9 +142,7 @@ def render_report(state: PipelineState) -> None:
                 for rec in report.ranked_recommendations():
                     if rec.linked_factor == factor.title:
                         st.markdown(
-                            f"**First step:** {rec.action}  \n**Target:** {rec.target}  \n"
-                            f"**How to track it:** {rec.how_to_track}  \n"
-                            f"**Check again:** {rec.recheck}"
+                            "  \n".join(f"**{label}:** {text}" for label, text in plan_lines(rec))
                         )
 
     if report.insufficient_data:

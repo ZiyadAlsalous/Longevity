@@ -57,8 +57,11 @@ class OllamaLLM:
 
 
 def _options() -> dict[str, Any]:
-    # num_predict stops a looping model instead of letting it run to the timeout.
-    options: dict[str, Any] = {"num_predict": settings.llm_max_tokens}
+    # num_predict stops a looping model; num_ctx keeps the prompt from being cut off.
+    options: dict[str, Any] = {
+        "num_predict": settings.llm_max_tokens,
+        "num_ctx": settings.llm_context_tokens,
+    }
     if settings.llm_temperature is not None:
         options["temperature"] = settings.llm_temperature
     return options

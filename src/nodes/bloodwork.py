@@ -30,12 +30,17 @@ Rules:
   absolute count, as separate analytes. A reference range belongs only to the result it is
   printed beside; when a row has two results and one range, the other result has no range.
 - Fill reference_range_low and reference_range_high only from a printed normal range, such as
-  "a - b", "up to b" or "above a". Risk tiers or categories are not a normal range.
+  "a - b", "up to b" or "above a". "< b" is an upper limit (high = b) and "> a" a lower limit
+  (low = a). Risk tiers or categories are not a normal range.
 - Ignore billing, prices, receipts, patient details and dates that are not results. A page
   with no laboratory results returns an empty analytes list.
 - If a value cannot be read, leave that analyte out. Never write 0 as a placeholder.
-- Copy any comment or recommendation the laboratory wrote about the results into lab_comments.
-  Signatures, job titles and headings are not comments.
+- Copy comments the laboratory wrote about this patient's results into lab_comments, such as
+  "RBCs show microcytosis" or "follow up is recommended". A comment names this patient's
+  sample or result. Text printed the same way on every report is not a comment: general
+  explanations of a test, lists of conditions a test can reflect, "correlate clinically",
+  sample handling notes, interpretation tables, method notes, signatures, job titles and
+  headings.
 - lab_name is the name of the laboratory, not a doctor.
 - Leave reference_range_low or reference_range_high null when the report does not print one.
 - Put any line that looks like a result but cannot be transcribed confidently into
@@ -195,11 +200,10 @@ def check_ranges(analytes: list[BloodAnalyte], lines: list[str]) -> list[BloodAn
     rows = [row_of(a, lines) for a in analytes]
     checked: list[BloodAnalyte] = []
     for analyte, row in zip(analytes, rows, strict=True):
-        bounds = [
-            b for b in (analyte.reference_range_low, analyte.reference_range_high) if b is not None
-        ]
-        on_line = row is not None and _range_printed_beside(analyte, lines[row])
-        checked.append(analyte if on_line else _without_range(analyte))
+        if row is None or not _range_printed_beside(analyte, lines[row]):
+            checked.append(_without_range(analyte))
+        else:
+            checked.append(_range_as_printed(analyte, lines[row]))
 
     # Two results on one line with one printed range: the range belongs to the result printed
     # just before it, whichever result the model gave it to.
@@ -240,6 +244,32 @@ def _range_printed_beside(analyte: BloodAnalyte, line: str) -> bool:
         if numbers.count(abs(bound)) < needed:
             return False
     return True
+
+
+UPPER_MARKERS = ("<=", "<", "≤", "up to", "below", "less than", "under")
+LOWER_MARKERS = (">=", ">", "≥", "above", "more than", "over")
+
+
+def _range_as_printed(analyte: BloodAnalyte, line: str) -> BloodAnalyte:
+    """Put a single bound on the side its printed "<" or ">" marker says."""
+    bounds = _bounds(analyte)
+    if len(bounds) != 1:
+        return analyte
+    bound = bounds[0]
+    value_at = min((p for p, v in _numbers_at(line) if v == abs(analyte.value)), default=-1)
+    positions = [p for p, v in _numbers_at(line) if v == abs(bound) and p > value_at]
+    if not positions:
+        return analyte
+    before = line[: positions[0]].rstrip().lower()
+    if before.endswith(UPPER_MARKERS):
+        return analyte.model_copy(
+            update={"reference_range_low": None, "reference_range_high": bound}
+        )
+    if before.endswith(LOWER_MARKERS):
+        return analyte.model_copy(
+            update={"reference_range_low": bound, "reference_range_high": None}
+        )
+    return analyte
 
 
 def check_units(analytes: list[BloodAnalyte], lines: list[str]) -> list[BloodAnalyte]:
