@@ -165,6 +165,9 @@ No key is needed. The defaults work as they are:
 LLM_MODEL=qwen3:8b                  # any Ollama model that supports structured output
 OLLAMA_HOST=http://localhost:11434
 LLM_CONTEXT_TOKENS=16384            # prompt plus answer; lower it on a small machine
+LLM_TEMPERATURE=0.7                 # Qwen3's non-thinking settings; never 0, it loops
+LLM_TOP_P=0.8
+LLM_TOP_K=20
 TORCH_DEVICE=auto                   # cuda, mps, or cpu
 ```
 

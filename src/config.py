@@ -99,8 +99,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     llm_model: str = "qwen3:8b"
-    # None keeps the model's own recommended sampling; Qwen repeats itself at temperature 0.
-    llm_temperature: float | None = None
+    # Qwen3's recommended sampling for non-thinking mode; it repeats itself at temperature 0.
+    llm_temperature: float | None = 0.7
+    llm_top_p: float | None = 0.8
+    llm_top_k: int | None = 20
     llm_timeout_seconds: float = 600.0
     llm_max_tokens: int = 8192
     llm_context_tokens: int = 16384  # prompt plus answer; Ollama defaults to 4096

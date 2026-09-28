@@ -62,8 +62,13 @@ def _options() -> dict[str, Any]:
         "num_predict": settings.llm_max_tokens,
         "num_ctx": settings.llm_context_tokens,
     }
-    if settings.llm_temperature is not None:
-        options["temperature"] = settings.llm_temperature
+    for name, value in (
+        ("temperature", settings.llm_temperature),
+        ("top_p", settings.llm_top_p),
+        ("top_k", settings.llm_top_k),
+    ):
+        if value is not None:
+            options[name] = value
     return options
 
 
